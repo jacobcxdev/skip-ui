@@ -27,9 +27,13 @@ extension ViewModifier {
     ///     the default version of the function is always invoked, ignoring implementor overrides.
     /// - Seealso: `View.Evaluate(context:options:)`
     @Composable public func Evaluate(content: Content, context: ComposeContext, options: Int) -> kotlin.collections.List<Renderable> {
+        ViewObservation.startRecording?()
+
         StateTracking.pushBody()
         let renderables = body(content: content).Evaluate(context: context, options: options)
         StateTracking.popBody()
+
+        ViewObservation.stopAndObserve?()
         return renderables
     }
 }

@@ -19,6 +19,25 @@ public protocol View {
     #endif
 }
 
+/// Hook point for Fuse-mode observation tracking.
+/// In Fuse mode, the init block detects the native bridge library and wires up
+/// JNI calls to ObservationRecording. In Lite mode (no bridge), closures stay null.
+/// Self-initializes on first access from Evaluate() — no registration needed.
+// SKIP DECLARE: object ViewObservation
+struct ViewObservation {
+    #if SKIP
+    // SKIP INSERT: var startRecording: (() -> Unit)? = null
+    // SKIP INSERT: var stopAndObserve: (() -> Unit)? = null
+    // SKIP INSERT: init { try { nativeEnable(); startRecording = { try { nativeStartRecording() } catch (e: Throwable) { error("ViewObservation: nativeStartRecording() failed mid-session. JNI bridge is broken. Error: ${e.message}") } }; stopAndObserve = { try { nativeStopAndObserve() } catch (e: Throwable) { error("ViewObservation: nativeStopAndObserve() failed mid-session. JNI bridge is broken. Error: ${e.message}") } } } catch (e: Throwable) { error("ViewObservation: nativeEnable() failed. Observation bridge is NOT active. This is fatal in Fuse mode — the bridge is load-bearing infrastructure. Error: ${e.message}") } }
+    // SKIP INSERT: private external fun nativeEnable()
+    // SKIP INSERT: private external fun nativeStartRecording()
+    // SKIP INSERT: private external fun nativeStopAndObserve()
+    #else
+    static var startRecording: (() -> Void)? = nil
+    static var stopAndObserve: (() -> Void)? = nil
+    #endif
+}
+
 #if SKIP
 extension View {
     /// Compose this view without an existing context - typically called when integrating a SwiftUI view tree into pure Compose.
@@ -68,9 +87,13 @@ extension View {
         if let renderable = self as? Renderable {
             return listOf(self)
         } else {
+            ViewObservation.startRecording?()
+
             StateTracking.pushBody()
             let renderables = body.Evaluate(context: context, options: options)
             StateTracking.popBody()
+
+            ViewObservation.stopAndObserve?()
             return renderables
         }
     }
