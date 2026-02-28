@@ -92,25 +92,40 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         var collected: kotlin.collections.MutableList<Renderable> = mutableListOf()
         if let indexRange {
             for index in indexRange() {
-                var renderables = indexedContent!(index).Evaluate(context: context, options: options)
-                if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
-                    collected.add(self)
-                    break
-                } else {
-                    isFirst = false
-                }
                 let defaultTag: Any?
                 if let identifier {
                     defaultTag = identifier(index)
                 } else {
                     defaultTag = index
                 }
+                var renderables: kotlin.collections.List<Renderable>
+                if let defaultTag {
+                    renderables = androidx.compose.runtime.key(defaultTag) {
+                        return indexedContent!(index).Evaluate(context: context, options: options)
+                    }
+                } else {
+                    renderables = indexedContent!(index).Evaluate(context: context, options: options)
+                }
+                if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
+                    collected.add(self)
+                    break
+                } else {
+                    isFirst = false
+                }
                 renderables = renderables.map { taggedRenderable(for: $0, defaultTag: defaultTag) }
                 collected.addAll(renderables)
             }
         } else if let objects {
             for object in objects {
-                var renderables = objectContent!(object).Evaluate(context: context, options: options)
+                let itemKey: Any? = identifier?(object)
+                var renderables: kotlin.collections.List<Renderable>
+                if let itemKey {
+                    renderables = androidx.compose.runtime.key(itemKey) {
+                        return objectContent!(object).Evaluate(context: context, options: options)
+                    }
+                } else {
+                    renderables = objectContent!(object).Evaluate(context: context, options: options)
+                }
                 if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
                     collected.add(self)
                     break
@@ -125,7 +140,15 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         } else if let objectsBinding {
             let objects = objectsBinding.wrappedValue
             for i in 0..<objects.count {
-                var renderables = objectsBindingContent!(objectsBinding, i).Evaluate(context: context, options: options)
+                let itemKey: Any? = identifier?(objects[i])
+                var renderables: kotlin.collections.List<Renderable>
+                if let itemKey {
+                    renderables = androidx.compose.runtime.key(itemKey) {
+                        return objectsBindingContent!(objectsBinding, i).Evaluate(context: context, options: options)
+                    }
+                } else {
+                    renderables = objectsBindingContent!(objectsBinding, i).Evaluate(context: context, options: options)
+                }
                 if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
                     collected.add(self)
                     break
