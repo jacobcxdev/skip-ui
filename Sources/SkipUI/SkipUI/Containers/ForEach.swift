@@ -77,6 +77,21 @@ public final class ForEach : View, Renderable, LazyItemFactory {
     }
 
     #if SKIP
+    /// Evaluate `content` wrapped in `androidx.compose.runtime.key()` when `key` is non-nil,
+    /// or unwrapped when nil. This scopes `remember` blocks (including `SwiftPeerHandle`) to
+    /// the item's identity rather than its position — nested `key()` calls from child `.id()`
+    /// modifiers compose additively into a compound key, matching SwiftUI's hierarchical identity.
+    @Composable private func evaluateKeyed(
+        key: Any?,
+        content: @Composable () -> kotlin.collections.List<Renderable>
+    ) -> kotlin.collections.List<Renderable> {
+        if let key {
+            return androidx.compose.runtime.key(key) { content() }
+        } else {
+            return content()
+        }
+    }
+
     @Composable override func Evaluate(context: ComposeContext, options: Int) -> kotlin.collections.List<Renderable> {
         guard !EvaluateOptions(options).isKeepForEach else {
             return listOf(self)
@@ -92,19 +107,9 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         var collected: kotlin.collections.MutableList<Renderable> = mutableListOf()
         if let indexRange {
             for index in indexRange() {
-                let defaultTag: Any?
-                if let identifier {
-                    defaultTag = identifier(index)
-                } else {
-                    defaultTag = index
-                }
-                var renderables: kotlin.collections.List<Renderable>
-                if let defaultTag {
-                    renderables = androidx.compose.runtime.key(defaultTag) {
-                        return indexedContent!(index).Evaluate(context: context, options: options)
-                    }
-                } else {
-                    renderables = indexedContent!(index).Evaluate(context: context, options: options)
+                let defaultTag: Any? = identifier != nil ? identifier!(index) : index
+                var renderables = evaluateKeyed(key: defaultTag) {
+                    indexedContent!(index).Evaluate(context: context, options: options)
                 }
                 if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
                     collected.add(self)
@@ -117,14 +122,8 @@ public final class ForEach : View, Renderable, LazyItemFactory {
             }
         } else if let objects {
             for object in objects {
-                let itemKey: Any? = identifier?(object)
-                var renderables: kotlin.collections.List<Renderable>
-                if let itemKey {
-                    renderables = androidx.compose.runtime.key(itemKey) {
-                        return objectContent!(object).Evaluate(context: context, options: options)
-                    }
-                } else {
-                    renderables = objectContent!(object).Evaluate(context: context, options: options)
+                var renderables = evaluateKeyed(key: identifier?(object)) {
+                    objectContent!(object).Evaluate(context: context, options: options)
                 }
                 if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
                     collected.add(self)
@@ -140,14 +139,8 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         } else if let objectsBinding {
             let objects = objectsBinding.wrappedValue
             for i in 0..<objects.count {
-                let itemKey: Any? = identifier?(objects[i])
-                var renderables: kotlin.collections.List<Renderable>
-                if let itemKey {
-                    renderables = androidx.compose.runtime.key(itemKey) {
-                        return objectsBindingContent!(objectsBinding, i).Evaluate(context: context, options: options)
-                    }
-                } else {
-                    renderables = objectsBindingContent!(objectsBinding, i).Evaluate(context: context, options: options)
+                var renderables = evaluateKeyed(key: identifier?(objects[i])) {
+                    objectsBindingContent!(objectsBinding, i).Evaluate(context: context, options: options)
                 }
                 if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
                     collected.add(self)
