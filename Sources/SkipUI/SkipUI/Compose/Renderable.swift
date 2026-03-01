@@ -49,11 +49,31 @@ extension Renderable {
     /// Container rendering loops (Column, Row) should wrap iteration bodies with
     /// `androidx.compose.runtime.key(composeKey)` so that Compose matches items
     /// by key rather than by position when items are added or removed.
+    @available(*, deprecated, message: "Use identityKey instead")
     public var composeKey: Any? {
         guard let raw = TagModifier.on(content: self, role: .tag)?.value else {
             return nil
         }
         return composeKeyValue(raw)
+    }
+
+    /// Structural identity key for container sibling loops.
+    /// Set by ForEach via IdentityKeyModifier during Evaluate.
+    /// nil = positional index fallback.
+    ///
+    /// forEachModifier propagation audit (Phase 18.1):
+    /// - ModifiedContent: forwards (checks modifier, recurses into content) — correct
+    /// - LazyLevelRenderable: forwards to content — correct
+    /// - LazySectionHeader/Footer: does NOT forward, but only used in lazy contexts where identityKey is not consumed — safe
+    /// - ViewRenderable: does NOT forward, but not placed inside ForEach-produced modifier chains — safe
+    public var identityKey: Any? {
+        forEachModifier { ($0 as? IdentityKeyModifier)?.normalizedKey }
+    }
+
+    /// Selection tag for Picker/TabView binding.
+    /// Raw Swift value — compared in Swift, not Compose.
+    public var selectionTag: Any? {
+        TagModifier.on(content: self, role: .tag)?.value
     }
 
     /// Represent this `Renderable` as a `View`.
@@ -62,11 +82,48 @@ extension Renderable {
     }
 }
 
+/// Single normalisation function for identity keys. Called once at the producer.
+/// Consumers never normalise — they receive already-safe values via `identityKey`.
+///
+/// Guarantees output is String, Int, or Long — types Compose can compare natively.
+///
+/// Optional unwrapping note: In Skip/Kotlin, Swift Optional is erased to Kotlin nullable.
+/// `Optional.some(x)` becomes just `x`, so the raw value retains its underlying type.
+/// Callers guard against nil before calling normalizeKey(), so no explicit Optional
+/// unwrapping is needed here.
+public func normalizeKey(_ raw: Any) -> Any {
+    if raw is String || raw is Int || raw is Long { return raw }
+    if let identifiable = raw as? any Identifiable {
+        return normalizeKey(identifiable.id)
+    }
+    if let rawRepresentable = raw as? any RawRepresentable {
+        return normalizeKey(rawRepresentable.rawValue)
+    }
+    return "\(raw)"
+}
+
+/// New modifier carrying normalised identity. Transparent during rendering.
+/// Travels through ModifiedContent chains; found via forEachModifier traversal.
+/// Extends RenderModifier for full ModifierProtocol conformance.
+final class IdentityKeyModifier: RenderModifier {
+    let normalizedKey: Any  // String | Int | Long — guaranteed by normalizeKey()
+
+    init(key: Any) {
+        self.normalizedKey = normalizeKey(key)
+        super.init(role: .unspecified)
+    }
+
+    @Composable override func Render(content: Renderable, context: ComposeContext) {
+        content.Render(context: context)  // transparent — container consumes identity
+    }
+}
+
 /// Convert a bridged value to a Compose-safe key.
 ///
 /// Bridged tag values arrive as `SwiftHashable`, whose JNI-based `equals()` is
 /// not compatible with Compose's internal key comparison. This converts to a
 /// Kotlin-native type that Compose can compare reliably.
+@available(*, deprecated, message: "Use normalizeKey() instead")
 public func composeKeyValue(_ raw: Any) -> Any {
     let result: Any
     if raw is String || raw is Int || raw is Long {
