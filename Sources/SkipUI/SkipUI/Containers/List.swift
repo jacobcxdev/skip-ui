@@ -266,7 +266,7 @@ public final class List : View, Renderable {
                 },
                 indexedItems: { range, identifier, offset, onDelete, onMove, level, factory in
                     let count = range.endExclusive - range.start
-                    let key: ((Int) -> String)? = identifier == nil ? nil : { composeBundleString(for: identifier!(range.start + itemCollector.value.remapIndex($0, from: offset))) }
+                    let key: ((Int) -> String)? = identifier == nil ? nil : { composeBundleNormalizedKey(for: identifier!(range.start + itemCollector.value.remapIndex($0, from: offset))) }
                     items(count: count, key: key) { index in
                         let keyValue = key?(index) // Key closure already remaps index
                         let index = itemCollector.value.remapIndex(index, from: offset)
@@ -276,7 +276,7 @@ public final class List : View, Renderable {
                     }
                 },
                 objectItems: { objects, identifier, offset, onDelete, onMove, level, factory in
-                    let key: (Int) -> String = { composeBundleString(for: identifier(objects[itemCollector.value.remapIndex($0, from: offset)])) }
+                    let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objects[itemCollector.value.remapIndex($0, from: offset)])) }
                     items(count: objects.count, key: key) { index in
                         let keyValue = key(index) // Key closure already remaps index
                         let index = itemCollector.value.remapIndex(index, from: offset)
@@ -286,7 +286,7 @@ public final class List : View, Renderable {
                     }
                 },
                 objectBindingItems: { objectsBinding, identifier, offset, editActions, onDelete, onMove, level, factory in
-                    let key: (Int) -> String = { composeBundleString(for: identifier(objectsBinding.wrappedValue[itemCollector.value.remapIndex($0, from: offset)])) }
+                    let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objectsBinding.wrappedValue[itemCollector.value.remapIndex($0, from: offset)])) }
                     items(count: objectsBinding.wrappedValue.count, key: key) { index in
                         let keyValue = key(index) // Key closure already remaps index
                         let index = itemCollector.value.remapIndex(index, from: offset)
@@ -485,16 +485,15 @@ public final class List : View, Renderable {
                     withAnimation { (objectsBinding.wrappedValue as? RangeReplaceableCollection<Any>)?.remove(at: index) }
                 }
             })
-            let coroutineScope = rememberCoroutineScope()
-            let positionalThreshold = with(LocalDensity.current) { 164.dp.toPx() }
             let dismissState = rememberSwipeToDismissBoxState(confirmValueChange: {
-                if $0 == SwipeToDismissBoxValue.EndToStart {
-                    coroutineScope.launch {
-                        rememberedOnDelete.value()
-                    }
-                }
-                return false
+                $0 == SwipeToDismissBoxValue.EndToStart
             }, positionalThreshold = SwipeToDismissBoxDefaults.positionalThreshold)
+
+            LaunchedEffect(dismissState.currentValue) {
+                if dismissState.currentValue == SwipeToDismissBoxValue.EndToStart {
+                    rememberedOnDelete.value()
+                }
+            }
 
             let itemContent: @Composable (Modifier) -> Void = {
                 SwipeToDismissBox(state: dismissState, enableDismissFromEndToStart: true, enableDismissFromStartToEnd: false, modifier: $0, backgroundContent: {

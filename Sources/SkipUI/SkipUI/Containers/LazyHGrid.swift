@@ -102,7 +102,7 @@ public struct LazyHGrid: View, Renderable {
                         },
                         indexedItems: { range, identifier, _, _, _, _, factory in
                             let count = range.endExclusive - range.start
-                            let key: ((Int) -> String)? = identifier == nil ? nil : { composeBundleString(for: identifier!($0 + range.start)) }
+                            let key: ((Int) -> String)? = identifier == nil ? nil : { composeBundleNormalizedKey(for: identifier!($0 + range.start)) }
                             items(count: count, key: key) { index in
                                 Box(contentAlignment: boxAlignment) {
                                     let scopedContext = context.content(scope: self)
@@ -111,7 +111,7 @@ public struct LazyHGrid: View, Renderable {
                             }
                         },
                         objectItems: { objects, identifier, _, _, _, _, factory in
-                            let key: (Int) -> String = { composeBundleString(for: identifier(objects[$0])) }
+                            let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objects[$0])) }
                             items(count: objects.count, key: key) { index in
                                 let scopedContext = context.content(scope: self)
                                 Box(contentAlignment: boxAlignment) {
@@ -120,7 +120,7 @@ public struct LazyHGrid: View, Renderable {
                             }
                         },
                         objectBindingItems: { objectsBinding, identifier, _, _, _, _, _, factory in
-                            let key: (Int) -> String = { composeBundleString(for: identifier(objectsBinding.wrappedValue[$0])) }
+                            let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objectsBinding.wrappedValue[$0])) }
                             items(count: objectsBinding.wrappedValue.count, key: key) { index in
                                 let scopedContext = context.content(scope: self)
                                 Box(contentAlignment: boxAlignment) {

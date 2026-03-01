@@ -102,7 +102,7 @@ public final class Table<ObjectType, ID> : View, Renderable where ObjectType: Id
             !forceUnanimatedItems.value && EnvironmentValues.shared._searchableState?.isSearching.value != true
         }
 
-        let key: (Int) -> String = { composeBundleString(for: data[$0].id) }
+        let key: (Int) -> String = { composeBundleNormalizedKey(for: data[$0].id) }
         let isCompact = EnvironmentValues.shared.horizontalSizeClass == .compact
         LazyColumn(state: listState, modifier: modifier) {
             if headerSafeAreaHeight.value > 0 {

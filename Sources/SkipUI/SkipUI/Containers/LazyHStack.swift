@@ -96,19 +96,19 @@ public struct LazyHStack : View, Renderable {
                         },
                         indexedItems: { range, identifier, _, _, _, _, factory in
                             let count = range.endExclusive - range.start
-                            let key: ((Int) -> String)? = identifier == nil ? nil : { composeBundleString(for: identifier!($0 + range.start)) }
+                            let key: ((Int) -> String)? = identifier == nil ? nil : { composeBundleNormalizedKey(for: identifier!($0 + range.start)) }
                             items(count: count, key: key) { index in
                                 factory(index + range.start, context.content(scope: self)).Render(context: context.content(scope: self))
                             }
                         },
                         objectItems: { objects, identifier, _, _, _, _, factory in
-                            let key: (Int) -> String = { composeBundleString(for: identifier(objects[$0])) }
+                            let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objects[$0])) }
                             items(count: objects.count, key: key) { index in
                                 factory(objects[index], context.content(scope: self)).Render(context: context.content(scope: self))
                             }
                         },
                         objectBindingItems: { objectsBinding, identifier, _, _, _, _, _, factory in
-                            let key: (Int) -> String = { composeBundleString(for: identifier(objectsBinding.wrappedValue[$0])) }
+                            let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objectsBinding.wrappedValue[$0])) }
                             items(count: objectsBinding.wrappedValue.count, key: key) { index in
                                 factory(objectsBinding, index, context.content(scope: self)).Render(context: context.content(scope: self))
                             }
