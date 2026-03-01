@@ -44,6 +44,21 @@ extension Renderable {
         return nil
     }
 
+    /// The Compose key for ForEach identity, if this renderable has a `.tag` modifier.
+    ///
+    /// Container rendering loops (Column, Row) should wrap iteration bodies with
+    /// `androidx.compose.runtime.key(composeKey)` so that Compose matches items
+    /// by key rather than by position when items are added or removed.
+    public var composeKey: Any? {
+        guard let raw = TagModifier.on(content: self, role: .tag)?.value else {
+            return nil
+        }
+        // Convert to String for Compose key matching. Bridged tag values arrive as
+        // SwiftHashable, whose JNI-based equals() is not compatible with Compose's
+        // internal key comparison. String equality is native to Kotlin and reliable.
+        return "\(raw)"
+    }
+
     /// Represent this `Renderable` as a `View`.
     public func asView() -> View {
         return self as? View ?? ComposeView(content: { self.Render($0) })

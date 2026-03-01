@@ -106,7 +106,17 @@ public struct HStack : View, Renderable {
                         } in: {
                             var lastWasSpacer: Bool? = nil
                             for renderable in renderables {
-                                lastWasSpacer = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion, context: contentContext)
+                                if let composeKey = renderable.composeKey {
+                                    // Emit spacing OUTSIDE key scope so that the composition
+                                    // structure within the key group is stable across position changes
+                                    let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer)
+                                    androidx.compose.runtime.key(composeKey) {
+                                        renderable.Render(context: contentContext)
+                                    }
+                                    lastWasSpacer = spacingResult
+                                } else {
+                                    lastWasSpacer = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion, context: contentContext)
+                                }
                             }
                         }
                     }
@@ -121,7 +131,15 @@ public struct HStack : View, Renderable {
                         } in: {
                             var lastWasSpacer: Bool? = nil
                             for renderable in renderables {
-                                lastWasSpacer = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion, context: contentContext)
+                                if let composeKey = renderable.composeKey {
+                                    let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer)
+                                    androidx.compose.runtime.key(composeKey) {
+                                        renderable.Render(context: contentContext)
+                                    }
+                                    lastWasSpacer = spacingResult
+                                } else {
+                                    lastWasSpacer = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion, context: contentContext)
+                                }
                             }
                         }
                     }
@@ -213,6 +231,19 @@ public struct HStack : View, Renderable {
                 }
             }
         }, label: "HStack")
+    }
+
+    /// Emit adaptive spacing before a renderable, outside any key scope.
+    /// Returns isSpacer tracking info, or nil when not adaptive.
+    @Composable private func EmitAdaptiveSpacing(renderable: Renderable, adaptiveSpacing: Bool, lastWasSpacer: Bool?) -> Bool? {
+        guard adaptiveSpacing else {
+            return nil
+        }
+        let isSpacer = renderable.strip() is Spacer
+        if let lastWasSpacer, !lastWasSpacer && !isSpacer {
+            androidx.compose.foundation.layout.Spacer(modifier: Modifier.width((spacing ?? Self.defaultSpacing).dp))
+        }
+        return isSpacer
     }
 
     @Composable private func RenderSpaced(renderable: Renderable, adaptiveSpacing: Bool, lastWasSpacer: Bool?, layoutImplementationVersion: Int, context: ComposeContext) -> Bool? {

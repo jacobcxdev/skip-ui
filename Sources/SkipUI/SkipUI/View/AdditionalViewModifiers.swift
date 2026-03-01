@@ -1426,6 +1426,13 @@ final class TagModifier: RenderModifier {
             androidx.compose.runtime.key(value ?? Self.defaultIdValue) {
                 super.Render(content: content, context: context)
             }
+        } else if role == .tag, let value {
+            // ForEach items: wrap Render with key() to preserve identity across list mutations.
+            // Without this, containers like VStack render ForEach items positionally in their
+            // Column loop, causing state loss when items are added/removed.
+            androidx.compose.runtime.key(value) {
+                super.Render(content: content, context: context)
+            }
         } else {
             super.Render(content: content, context: context)
         }
