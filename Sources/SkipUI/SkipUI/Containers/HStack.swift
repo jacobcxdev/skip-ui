@@ -172,7 +172,9 @@ public struct HStack : View, Renderable {
                  }
              })
         }, contentKey: {
-            $0.map(arguments.idMap)
+            // Normalize idMap output through normalizeKey() to avoid SwiftHashable JNI equality issues.
+            // See VStack.swift RenderAnimatedContent for explicitResetKey assessment.
+            $0.map { normalizeKey(arguments.idMap($0)) }
         }, content: { state in
             let animation = Animation.current(isAnimating: transition.isRunning)
             if animation == nil {
@@ -193,7 +195,13 @@ public struct HStack : View, Renderable {
                         return ComposeResult.ok
                     } in: {
                         var lastWasSpacer: Bool? = nil
-                        for renderable in state {
+                        var seenKeys = mutableSetOf<Any>()
+                        for i in 0..<state.size {
+                            let renderable = state[i]
+                            var composeKey: Any = renderable.identityKey ?? i
+                            if !seenKeys.add(composeKey) {
+                                composeKey = "\(composeKey)_dup\(i)"
+                            }
                             let id = arguments.idMap(renderable)
                             var modifier: Modifier = Modifier
                             if let animation, arguments.newIds.contains(id) || arguments.rememberedNewIds.contains(id) || !arguments.ids.contains(id) {
@@ -204,7 +212,11 @@ public struct HStack : View, Renderable {
                                 modifier = modifier.animateEnterExit(enter: enter, exit: exit)
                             }
                             let contentContext = context.content(modifier: modifier)
-                            lastWasSpacer = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion, context: contentContext)
+                            let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer)
+                            androidx.compose.runtime.key(composeKey) {
+                                renderable.Render(context: contentContext)
+                            }
+                            lastWasSpacer = spacingResult
                         }
                     }
                 }
@@ -218,7 +230,13 @@ public struct HStack : View, Renderable {
                         return ComposeResult.ok
                     } in: {
                         var lastWasSpacer: Bool? = nil
-                        for renderable in state {
+                        var seenKeys = mutableSetOf<Any>()
+                        for i in 0..<state.size {
+                            let renderable = state[i]
+                            var composeKey: Any = renderable.identityKey ?? i
+                            if !seenKeys.add(composeKey) {
+                                composeKey = "\(composeKey)_dup\(i)"
+                            }
                             let id = arguments.idMap(renderable)
                             var modifier: Modifier = Modifier
                             if let animation, arguments.newIds.contains(id) || arguments.rememberedNewIds.contains(id) || !arguments.ids.contains(id) {
@@ -229,7 +247,11 @@ public struct HStack : View, Renderable {
                                 modifier = modifier.animateEnterExit(enter: enter, exit: exit)
                             }
                             let contentContext = context.content(modifier: modifier)
-                            lastWasSpacer = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion, context: contentContext)
+                            let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer)
+                            androidx.compose.runtime.key(composeKey) {
+                                renderable.Render(context: contentContext)
+                            }
+                            lastWasSpacer = spacingResult
                         }
                     }
                 }

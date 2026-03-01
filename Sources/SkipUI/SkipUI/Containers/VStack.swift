@@ -207,7 +207,14 @@ public struct VStack : View, Renderable {
                  }
              })
         }, contentKey: {
-            $0.map(arguments.idMap)
+            // Normalize idMap output through normalizeKey() to avoid SwiftHashable JNI equality issues.
+            // AnimatedContent uses contentKey for diff logic — raw SwiftHashable values would fail comparison.
+            // explicitResetKey assessment: not needed at this time. AnimatedContent's contentKey drives both
+            // sibling matching (which items entered/exited) and state reset (via Compose's built-in key
+            // invalidation when contentKey changes). The nested key-group approach (outer identityKey for
+            // container loop matching, inner contentKey for AnimatedContent diff) provides sufficient
+            // separation — identityKey controls positional stability while contentKey controls animation triggers.
+            $0.map { normalizeKey(arguments.idMap($0)) }
         }, content: { state in
             let animation = Animation.current(isAnimating: self.transition.isRunning)
             if animation == nil {
@@ -229,7 +236,13 @@ public struct VStack : View, Renderable {
                     } in: {
                         var lastWasText: Bool? = nil
                         var lastWasSpacer: Bool? = nil
-                        for renderable in state {
+                        var seenKeys = mutableSetOf<Any>()
+                        for i in 0..<state.size {
+                            let renderable = state[i]
+                            var composeKey: Any = renderable.identityKey ?? i
+                            if !seenKeys.add(composeKey) {
+                                composeKey = "\(composeKey)_dup\(i)"
+                            }
                             let id = arguments.idMap(renderable)
                             var modifier: Modifier = Modifier
                             if let animation, arguments.newIds.contains(id) || arguments.rememberedNewIds.contains(id) || !arguments.ids.contains(id) {
@@ -240,7 +253,12 @@ public struct VStack : View, Renderable {
                                 modifier = modifier.animateEnterExit(enter: enter, exit: exit)
                             }
                             let contentContext = context.content(modifier: modifier)
-                            (lastWasText, lastWasSpacer) = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion, context: contentContext)
+                            let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion)
+                            androidx.compose.runtime.key(composeKey) {
+                                renderable.Render(context: contentContext)
+                            }
+                            lastWasText = spacingResult.0
+                            lastWasSpacer = spacingResult.1
                         }
                     }
                 }
@@ -255,7 +273,13 @@ public struct VStack : View, Renderable {
                     } in: {
                         var lastWasText: Bool? = nil
                         var lastWasSpacer: Bool? = nil
-                        for renderable in state {
+                        var seenKeys = mutableSetOf<Any>()
+                        for i in 0..<state.size {
+                            let renderable = state[i]
+                            var composeKey: Any = renderable.identityKey ?? i
+                            if !seenKeys.add(composeKey) {
+                                composeKey = "\(composeKey)_dup\(i)"
+                            }
                             let id = arguments.idMap(renderable)
                             var modifier: Modifier = Modifier
                             if let animation, arguments.newIds.contains(id) || arguments.rememberedNewIds.contains(id) || !arguments.ids.contains(id) {
@@ -266,7 +290,12 @@ public struct VStack : View, Renderable {
                                 modifier = modifier.animateEnterExit(enter: enter, exit: exit)
                             }
                             let contentContext = context.content(modifier: modifier)
-                            (lastWasText, lastWasSpacer) = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion, context: contentContext)
+                            let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion)
+                            androidx.compose.runtime.key(composeKey) {
+                                renderable.Render(context: contentContext)
+                            }
+                            lastWasText = spacingResult.0
+                            lastWasSpacer = spacingResult.1
                         }
                     }
                 }
