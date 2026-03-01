@@ -22,6 +22,24 @@ func composeBundleString(for value: Any?) -> String {
     }
 }
 
+/// Lazy-key adapter: wraps normalizeKey() to produce String keys for Compose's lazy items() API.
+///
+/// Compose's LazyColumn/LazyRow/LazyGrid `items(count:key:)` requires `(Int) -> String` key closures.
+/// This function routes through normalizeKey() for canonical normalisation, then converts to String.
+/// The result is equivalent to composeBundleString() for all common types (String, Int, UUID, enums)
+/// but uses the canonical normalisation pipeline instead of ad-hoc String(describing:) conversion.
+///
+/// - Note: Navigation.swift uses composeBundleString() for route serialisation — that is NOT identity
+///   and stays as-is.
+func composeBundleNormalizedKey(for value: Any?) -> String {
+    guard let value else { return "nil" }
+    let normalized = normalizeKey(value)
+    if let str = normalized as? String {
+        return str
+    }
+    return String(describing: normalized)
+}
+
 /// Used in conjunction with `rememberSaveable` to save and restore state with SwiftUI-like behavior.
 struct ComposeStateSaver: Saver<Any?, Any> {
     private static let nilMarker = "__SkipUI.ComposeStateSaver.nilMarker"
