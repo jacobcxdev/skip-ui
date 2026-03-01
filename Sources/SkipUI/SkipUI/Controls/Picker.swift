@@ -144,7 +144,7 @@ public final class Picker<SelectionValue> : View, Renderable {
 
     @Composable private func RenderSegmentedValue(context: ComposeContext) {
         let (_, tagged) = processPickerContent(content: content, selection: selection, context: context, requireTaggedRenderables: true)
-        let selectedIndex = tagged?.indexOfFirst { TagModifier.on(content: $0, role: .tag)?.value == selection.wrappedValue } ?? -1
+        let selectedIndex = tagged?.indexOfFirst { $0.selectionTag == selection.wrappedValue } ?? -1
         let isEnabled = EnvironmentValues.shared.isEnabled
         let colors: SegmentedButtonColors
         let disabledBorderColor = Color.primary.colorImpl().copy(alpha: ContentAlpha.disabled)
@@ -161,7 +161,7 @@ public final class Picker<SelectionValue> : View, Renderable {
                 for (index, taggedRenderable) in tagged.withIndex() {
                     let isSelected = index == selectedIndex
                     let onClick: () -> Void = {
-                        selection.wrappedValue = TagModifier.on(content: taggedRenderable, role: .tag)?.value as! SelectionValue
+                        selection.wrappedValue = taggedRenderable.selectionTag as! SelectionValue
                     }
                     let shape = SegmentedButtonDefaults.itemShape(index: index, count: tagged.size)
                     let borderColor = isSelected ? (isEnabled ? colors.activeBorderColor : colors.disabledActiveBorderColor) : (isEnabled ? colors.inactiveBorderColor : colors.disabledInactiveBorderColor)
@@ -228,7 +228,7 @@ public final class Picker<SelectionValue> : View, Renderable {
         let renderables = taggedRenderables ?? processPickerContent(content: content, selection: selection, context: context, requireTaggedRenderables: true).1 ?? listOf()
         let menuItems = renderables.map {
             let renderable = $0 as Renderable // Let transpiler understand type
-            let tagValue = TagModifier.on(content: renderable, role: .tag)?.value
+            let tagValue = renderable.selectionTag
             let button = Button(action: {
                 selection.wrappedValue = tagValue as! SelectionValue
             }, label: { renderable.asView() })
@@ -337,9 +337,9 @@ extension View {
             current = listOf(renderable)
         }
         for renderable in current {
-            if let tagModifier = TagModifier.on(content: renderable, role: .tag) {
+            if let tagValue = renderable.selectionTag {
                 tagged.add(renderable)
-                if selected == nil, tagModifier.value == selectedTag {
+                if selected == nil, tagValue == selectedTag {
                     selected = renderable
                 }
             }
@@ -369,7 +369,7 @@ struct PickerSelectionView<SelectionValue> : View {
     }
 
     private func pickerRow(label: Renderable) -> Renderable {
-        let labelValue = TagModifier.on(content: label, role: .tag)?.value as? SelectionValue
+        let labelValue = label.selectionTag as? SelectionValue
         return Button {
             if let labelValue {
                 selection.wrappedValue = labelValue

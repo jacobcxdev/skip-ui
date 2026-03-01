@@ -121,9 +121,13 @@ public struct VStack : View, Renderable {
                             // a conditional. An `if let` around key() creates per-iteration
                             // replaceable groups that prevent Compose from matching movable
                             // key groups across iterations when items are added/removed.
+                            var seenKeys = mutableSetOf<Any>()
                             for i in 0..<renderables.size {
                                 let renderable = renderables[i]
-                                let composeKey: Any = renderable.composeKey ?? i
+                                var composeKey: Any = renderable.identityKey ?? i
+                                if !seenKeys.add(composeKey) {
+                                    composeKey = "\(composeKey)_dup\(i)"
+                                }
                                 #if FUSE_IDENTITY_DEBUG
                                 android.util.Log.d("ComposeIdentity", "VStack key: composeKey=\(composeKey) type=\(type(of: composeKey)) renderable=\(type(of: renderable))")
                                 #endif
@@ -155,9 +159,13 @@ public struct VStack : View, Renderable {
                             #endif
                             var lastWasText: Bool? = nil
                             var lastWasSpacer: Bool? = nil
+                            var seenKeys = mutableSetOf<Any>()
                             for i in 0..<renderables.size {
                                 let renderable = renderables[i]
-                                let composeKey: Any = renderable.composeKey ?? i
+                                var composeKey: Any = renderable.identityKey ?? i
+                                if !seenKeys.add(composeKey) {
+                                    composeKey = "\(composeKey)_dup\(i)"
+                                }
                                 #if FUSE_IDENTITY_DEBUG
                                 android.util.Log.d("ComposeIdentity", "VStack key: composeKey=\(composeKey) type=\(type(of: composeKey)) renderable=\(type(of: renderable))")
                                 #endif

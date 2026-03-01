@@ -83,29 +83,6 @@ public final class ForEach : View, Renderable, LazyItemFactory {
     }
 
     #if SKIP
-    /// Evaluate `content` wrapped in `androidx.compose.runtime.key()` when `key` is non-nil.
-    ///
-    /// **Important:** `key()` is Compose-inline but this function is NOT, so calling `key()` from
-    /// here creates a non-inline function group in the slot table. Compose can only move `key()`
-    /// movable groups within the same parent group — a non-inline function boundary prevents
-    /// groups from being moved across loop iterations, breaking identity preservation on deletion.
-    ///
-    /// For ForEach loops that need stable identity across item additions/removals, call
-    /// `androidx.compose.runtime.key()` directly in the loop body instead of through this helper.
-    /// This helper is retained for use cases where movable groups aren't required (e.g., Picker's
-    /// `untaggedRenderable`).
-    @Composable func evaluateKeyed(
-        key: Any?,
-        content: @Composable () -> kotlin.collections.List<Renderable>
-    ) -> kotlin.collections.List<Renderable> {
-        identityLog("evaluateKeyed: key=\(key.map { "\($0)" } ?? "nil")")
-        if let key {
-            return androidx.compose.runtime.key(key) { content() }
-        } else {
-            return content()
-        }
-    }
-
     @Composable override func Evaluate(context: ComposeContext, options: Int) -> kotlin.collections.List<Renderable> {
         guard !EvaluateOptions(options).isKeepForEach else {
             return listOf(self)
@@ -122,9 +99,7 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         var collected: kotlin.collections.MutableList<Renderable> = mutableListOf()
         if let indexRange {
             for index in indexRange() {
-                let defaultTag: Any? = identifier != nil ? identifier!(index) : index
-                // TEMP: evaluation-phase key() REMOVED to test dual-keying hypothesis.
-                // Render-phase keying (VStack + TagModifier) still provides identity.
+                let defaultKey: Any? = identifier != nil ? identifier!(index) : index
                 var renderables: kotlin.collections.List<Renderable>
                 renderables = indexedContent!(index).Evaluate(context: context, options: options)
                 if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
@@ -133,11 +108,10 @@ public final class ForEach : View, Renderable, LazyItemFactory {
                 } else {
                     isFirst = false
                 }
-                collected.addAll(taggedIteration(renderables: renderables, defaultTag: defaultTag))
+                collected.addAll(identifiedIteration(renderables: renderables, key: defaultKey))
             }
         } else if let objects {
             for object in objects {
-                // TEMP: evaluation-phase key() REMOVED to test dual-keying hypothesis.
                 var renderables: kotlin.collections.List<Renderable>
                 renderables = objectContent!(object).Evaluate(context: context, options: options)
                 if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
@@ -147,14 +121,13 @@ public final class ForEach : View, Renderable, LazyItemFactory {
                     isFirst = false
                 }
                 if let identifier {
-                    renderables = taggedIteration(renderables: renderables, defaultTag: identifier(object))
+                    renderables = identifiedIteration(renderables: renderables, key: identifier(object))
                 }
                 collected.addAll(renderables)
             }
         } else if let objectsBinding {
             let objects = objectsBinding.wrappedValue
             for i in 0..<objects.count {
-                // TEMP: evaluation-phase key() REMOVED to test dual-keying hypothesis.
                 var renderables: kotlin.collections.List<Renderable>
                 renderables = objectsBindingContent!(objectsBinding, i).Evaluate(context: context, options: options)
                 if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
@@ -164,7 +137,7 @@ public final class ForEach : View, Renderable, LazyItemFactory {
                     isFirst = false
                 }
                 if let identifier {
-                    renderables = taggedIteration(renderables: renderables, defaultTag: identifier(objects[i]))
+                    renderables = identifiedIteration(renderables: renderables, key: identifier(objects[i]))
                 }
                 collected.addAll(renderables)
             }
@@ -270,30 +243,52 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         }
     }
 
-    /// Tag an entire iteration's renderables with a single key.
+    /// Wrap a renderable with structural identity and selection tag.
+    ///
+    /// Produces both `IdentityKeyModifier` (for container loop `key()`) and
+    /// `TagModifier(.tag)` (for Picker/TabView selection matching). Since `.tag`'s
+    /// `key()` wrapping is removed in TagModifier.Render, the second modifier is a
+    /// pure data annotation with negligible overhead.
+    private func identifiedRenderable(for renderable: Renderable, key: Any?) -> Renderable {
+        guard let key else { return renderable }
+        var result = renderable
+        if result.identityKey == nil {
+            result = ModifiedContent(content: result, modifier: IdentityKeyModifier(key: key))
+        }
+        if TagModifier.on(content: result, role: .tag) == nil {
+            result = ModifiedContent(content: result, modifier: TagModifier(value: key, role: .tag))
+        }
+        return result
+    }
+
+    /// Identify an entire iteration's renderables with a single key.
     ///
     /// When an iteration produces multiple renderables (e.g. `CounterCard` + `Divider`),
-    /// wraps them in a single `ComposeView` group bearing one tag. This prevents duplicate
-    /// sibling keys in container flat lists (VStack/HStack), which would break Compose's
-    /// movable-group matching and cause identity/state loss on deletion.
-    private func taggedIteration(
+    /// wraps them in a single `ComposeView` group bearing one `IdentityKeyModifier` +
+    /// one `TagModifier(.tag)`. This prevents duplicate sibling keys in container flat
+    /// lists (VStack/HStack), which would break Compose's movable-group matching and
+    /// cause identity/state loss on deletion.
+    private func identifiedIteration(
         renderables: kotlin.collections.List<Renderable>,
-        defaultTag: Any?
+        key: Any?
     ) -> kotlin.collections.List<Renderable> {
-        guard let defaultTag else { return renderables }
+        guard let key else { return renderables }
         if renderables.size <= 1 {
-            return renderables.map { taggedRenderable(for: $0, defaultTag: defaultTag) }
+            return renderables.map { identifiedRenderable(for: $0, key: key) }
         }
-        identityLog("taggedIteration: grouping \(renderables.size) renderables under key=\(defaultTag)")
-        // Multiple renderables: wrap in a single group so the tag appears only once
+        identityLog("identifiedIteration: grouping \(renderables.size) renderables under key=\(key)")
+        // Multiple renderables: wrap in a single group so the identity appears only once
         let grouped = ComposeView(content: { context in
             for renderable in renderables {
                 renderable.Render(context: context)
             }
         })
-        return listOf(taggedRenderable(for: grouped, defaultTag: defaultTag))
+        return listOf(identifiedRenderable(for: grouped, key: key))
     }
 
+    /// Legacy tag wrapping for lazy paths. Lazy containers use their own key
+    /// mechanism (`items(key:)`), not `identityKey`.
+    @available(*, deprecated, message: "Use identifiedRenderable for eager paths")
     private func taggedRenderable(for renderable: Renderable, defaultTag: Any?) -> Renderable {
         if let defaultTag, TagModifier.on(content: renderable, role: .tag) == nil {
             return ModifiedContent(content: renderable, modifier: TagModifier(value: defaultTag, role: .tag))

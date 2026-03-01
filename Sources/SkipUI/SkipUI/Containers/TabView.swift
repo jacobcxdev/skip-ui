@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only WITH LGPL-3.0-linking-exception
 #if !SKIP_BRIDGE
 import Foundation
+import OSLog
 #if SKIP
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -63,6 +64,14 @@ import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 #endif
+
+private let tabLogger = Logger(subsystem: "skip.ui", category: "TAB_DEBUG")
+
+private func tabLog(_ msg: String) {
+    #if FUSE_TAB_DEBUG
+    tabLogger.debug("\(msg)")
+    #endif
+}
 
 // SKIP @bridge
 public struct TabView : View, Renderable {
@@ -139,6 +148,7 @@ public struct TabView : View, Renderable {
         guard let selectedTag = selection?.wrappedValue else {
             return
         }
+        tabLog("syncPagerStateToSelection: selectedTag=\(selectedTag), targetPage=\(pagerState.targetPage)")
         let selectedPageState = rememberUpdatedState(tags.indexOfFirst { $0 == selectedTag })
         let selectedPage = selectedPageState.value
         guard selectedPage != -1 && selectedPage != pagerState.targetPage else {
@@ -315,6 +325,7 @@ public struct TabView : View, Renderable {
                     let tabsState = rememberUpdatedState(tabs)
                     let containerColor = showScrolledBackground ? tabBarBackgroundColor : unscrolledTabBarBackgroundColor
                     let onItemClick: (Int) -> Void = { tabIndex in
+                        tabLog("onItemClick: tabIndex=\(tabIndex)")
                         let route = String(describing: tabIndex)
                         if let selection, let tagValue = tagValue(route: route, in: tabRenderables) {
                             selection.wrappedValue = tagValue
@@ -468,7 +479,7 @@ public struct TabView : View, Renderable {
         if let tab = renderable.strip() as? Tab, let value = tab.value {
             return value
         } else {
-            return TagModifier.on(content: renderable, role: .tag)?.value
+            return renderable.selectionTag
         }
     }
 
@@ -489,6 +500,7 @@ public struct TabView : View, Renderable {
 
     @Composable private func navigateToCurrentRoute(controller navController: NavHostController, tabRenderables: kotlin.collections.List<Renderable>) {
         let currentRoute = currentRoute(for: navController)
+        tabLog("navigateToCurrentRoute: currentRoute=\(currentRoute ?? "nil"), selection=\(selection?.wrappedValue ?? "nil" as Any)")
         if let selection, let currentRoute, selection.wrappedValue != tagValue(route: currentRoute, in: tabRenderables) {
             if let route = route(tagValue: selection.wrappedValue, in: tabRenderables) {
                 navigate(controller: navController, route: route)

@@ -107,9 +107,13 @@ public struct HStack : View, Renderable {
                             var lastWasSpacer: Bool? = nil
                             // key() MUST be at the top level of the loop body — NOT inside
                             // a conditional. See VStack.swift for detailed explanation.
+                            var seenKeys = mutableSetOf<Any>()
                             for i in 0..<renderables.size {
                                 let renderable = renderables[i]
-                                let composeKey: Any = renderable.composeKey ?? i
+                                var composeKey: Any = renderable.identityKey ?? i
+                                if !seenKeys.add(composeKey) {
+                                    composeKey = "\(composeKey)_dup\(i)"
+                                }
                                 let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer)
                                 androidx.compose.runtime.key(composeKey) {
                                     renderable.Render(context: contentContext)
@@ -128,9 +132,13 @@ public struct HStack : View, Renderable {
                             return ComposeResult.ok
                         } in: {
                             var lastWasSpacer: Bool? = nil
+                            var seenKeys = mutableSetOf<Any>()
                             for i in 0..<renderables.size {
                                 let renderable = renderables[i]
-                                let composeKey: Any = renderable.composeKey ?? i
+                                var composeKey: Any = renderable.identityKey ?? i
+                                if !seenKeys.add(composeKey) {
+                                    composeKey = "\(composeKey)_dup\(i)"
+                                }
                                 let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer)
                                 androidx.compose.runtime.key(composeKey) {
                                     renderable.Render(context: contentContext)

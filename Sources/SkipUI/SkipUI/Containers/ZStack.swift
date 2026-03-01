@@ -55,8 +55,16 @@ public struct ZStack : View, Renderable {
             let contentContext = context.content()
             ComposeContainer(eraseAxis: true, modifier: context.modifier) { modifier in
                 Box(modifier: modifier, contentAlignment: alignment.asComposeAlignment()) {
-                    for renderable in renderables {
-                        renderable.Render(context: contentContext)
+                    var seenKeys = mutableSetOf<Any>()
+                    for i in 0..<renderables.size {
+                        let renderable = renderables[i]
+                        var composeKey: Any = renderable.identityKey ?? i
+                        if !seenKeys.add(composeKey) {
+                            composeKey = "\(composeKey)_dup\(i)"
+                        }
+                        androidx.compose.runtime.key(composeKey) {
+                            renderable.Render(context: contentContext)
+                        }
                     }
                 }
             }

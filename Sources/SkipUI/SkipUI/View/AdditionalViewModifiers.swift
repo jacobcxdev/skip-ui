@@ -1393,6 +1393,13 @@ final class PaddingModifier: RenderModifier {
 }
 
 /// Used to mark views with a tag or ID.
+///
+/// .tag role key() removal audit (Phase 18.1):
+/// - Picker.swift (5 sites): selection matching only — safe
+/// - TabView.swift (1 site): selection matching only — safe
+/// - Menu.swift (1 site): isSelected data comparison only — safe
+/// - ForEach.swift (1 site): producer guard, not consumer — safe
+/// - No other .tag consumers found via exhaustive grep
 final class TagModifier: RenderModifier {
     static let defaultIdValue = "<TagModifier.defaultIdValue>"
 
@@ -1410,7 +1417,8 @@ final class TagModifier: RenderModifier {
             var context = context
             context.stateSaver = stateSaver
             // Use key() to reset remembered values that do not use the state saver
-            return androidx.compose.runtime.key(value ?? Self.defaultIdValue) {
+            let idKey = normalizeKey(value ?? Self.defaultIdValue)
+            return androidx.compose.runtime.key(idKey) {
                 return super.Evaluate(content: content, context: context, options: options)
             }
         } else {
@@ -1419,25 +1427,20 @@ final class TagModifier: RenderModifier {
         }
     }
 
+    // .tag role: NO key() — purely a data annotation for Picker/TabView selection.
+    // Identity is carried by IdentityKeyModifier and consumed at container render loops.
+    // .id role: retains key() wrapping for state destruction semantics, normalised via normalizeKey().
     @Composable override func Render(content: Renderable, context: ComposeContext) -> Void {
         if let stateSaver {
+            // .id role with state saver
             var context = context
             context.stateSaver = stateSaver
-            androidx.compose.runtime.key(value ?? Self.defaultIdValue) {
-                super.Render(content: content, context: context)
-            }
-        } else if role == .tag, let value {
-            // ForEach items: wrap Render with key() to preserve identity across list mutations.
-            // Without this, containers like VStack render ForEach items positionally in their
-            // Column loop, causing state loss when items are added/removed.
-            let convertedKey = composeKeyValue(value)
-            #if FUSE_IDENTITY_DEBUG
-            android.util.Log.d("ComposeIdentity", "TagModifier.Render: raw=\(value) type=\(type(of: value)) converted=\(convertedKey) type=\(type(of: convertedKey))")
-            #endif
-            androidx.compose.runtime.key(convertedKey) {
+            let idKey = normalizeKey(value ?? Self.defaultIdValue)
+            androidx.compose.runtime.key(idKey) {
                 super.Render(content: content, context: context)
             }
         } else {
+            // .tag role or .id without state saver: no key() wrapping
             super.Render(content: content, context: context)
         }
     }
