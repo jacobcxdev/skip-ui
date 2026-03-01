@@ -53,16 +53,39 @@ extension Renderable {
         guard let raw = TagModifier.on(content: self, role: .tag)?.value else {
             return nil
         }
-        // Convert to String for Compose key matching. Bridged tag values arrive as
-        // SwiftHashable, whose JNI-based equals() is not compatible with Compose's
-        // internal key comparison. String equality is native to Kotlin and reliable.
-        return "\(raw)"
+        return composeKeyValue(raw)
     }
 
     /// Represent this `Renderable` as a `View`.
     public func asView() -> View {
         return self as? View ?? ComposeView(content: { self.Render($0) })
     }
+}
+
+/// Convert a bridged value to a Compose-safe key.
+///
+/// Bridged tag values arrive as `SwiftHashable`, whose JNI-based `equals()` is
+/// not compatible with Compose's internal key comparison. This converts to a
+/// Kotlin-native type that Compose can compare reliably.
+public func composeKeyValue(_ raw: Any) -> Any {
+    let result: Any
+    if raw is String || raw is Int || raw is Long {
+        result = raw
+    } else {
+        let str = "\(raw)"
+        // SwiftHashable.toString() calls through JNI to Swift's String(describing:),
+        // which wraps Optional values as "Optional(...)". Strip the wrapper so keys
+        // are clean and consistent.
+        if str.hasPrefix("Optional("), str.hasSuffix(")") {
+            result = String(str.dropFirst(9).dropLast(1))
+        } else {
+            result = str
+        }
+    }
+    #if FUSE_IDENTITY_DEBUG
+    android.util.Log.d("ComposeIdentity", "composeKeyValue: input=\(raw) type=\(type(of: raw)) output=\(result) type=\(type(of: result))")
+    #endif
+    return result
 }
 
 #endif

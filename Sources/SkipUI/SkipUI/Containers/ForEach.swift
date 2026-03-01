@@ -6,6 +6,12 @@ import Foundation
 import androidx.compose.runtime.Composable
 #endif
 
+private func identityLog(_ msg: String) {
+    #if SKIP && FUSE_IDENTITY_DEBUG
+    let _ = android.util.Log.d("ComposeIdentity", msg)
+    #endif
+}
+
 // SKIP @bridge
 public final class ForEach : View, Renderable, LazyItemFactory {
     let identifier: ((Any) -> AnyHashable?)?
@@ -77,14 +83,22 @@ public final class ForEach : View, Renderable, LazyItemFactory {
     }
 
     #if SKIP
-    /// Evaluate `content` wrapped in `androidx.compose.runtime.key()` when `key` is non-nil,
-    /// or unwrapped when nil. This scopes `remember` blocks (including `SwiftPeerHandle`) to
-    /// the item's identity rather than its position — nested `key()` calls from child `.id()`
-    /// modifiers compose additively into a compound key, matching SwiftUI's hierarchical identity.
-    @Composable private func evaluateKeyed(
+    /// Evaluate `content` wrapped in `androidx.compose.runtime.key()` when `key` is non-nil.
+    ///
+    /// **Important:** `key()` is Compose-inline but this function is NOT, so calling `key()` from
+    /// here creates a non-inline function group in the slot table. Compose can only move `key()`
+    /// movable groups within the same parent group — a non-inline function boundary prevents
+    /// groups from being moved across loop iterations, breaking identity preservation on deletion.
+    ///
+    /// For ForEach loops that need stable identity across item additions/removals, call
+    /// `androidx.compose.runtime.key()` directly in the loop body instead of through this helper.
+    /// This helper is retained for use cases where movable groups aren't required (e.g., Picker's
+    /// `untaggedRenderable`).
+    @Composable func evaluateKeyed(
         key: Any?,
         content: @Composable () -> kotlin.collections.List<Renderable>
     ) -> kotlin.collections.List<Renderable> {
+        identityLog("evaluateKeyed: key=\(key.map { "\($0)" } ?? "nil")")
         if let key {
             return androidx.compose.runtime.key(key) { content() }
         } else {
@@ -97,6 +111,7 @@ public final class ForEach : View, Renderable, LazyItemFactory {
             return listOf(self)
         }
         let isLazy = EvaluateOptions(options).lazyItemLevel != nil
+        identityLog("Evaluate: isLazy=\(isLazy), hasIdentifier=\(identifier != nil), hasObjects=\(objects != nil), objectCount=\(objects?.count ?? -1)")
 
         // ForEach views might contain nested lazy item factories such as Sections or other ForEach instances. They also
         // might contain more than one view per iteration, which isn't supported by Compose lazy processing. We execute
@@ -108,23 +123,23 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         if let indexRange {
             for index in indexRange() {
                 let defaultTag: Any? = identifier != nil ? identifier!(index) : index
-                var renderables = evaluateKeyed(key: defaultTag) {
-                    indexedContent!(index).Evaluate(context: context, options: options)
-                }
+                // TEMP: evaluation-phase key() REMOVED to test dual-keying hypothesis.
+                // Render-phase keying (VStack + TagModifier) still provides identity.
+                var renderables: kotlin.collections.List<Renderable>
+                renderables = indexedContent!(index).Evaluate(context: context, options: options)
                 if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
                     collected.add(self)
                     break
                 } else {
                     isFirst = false
                 }
-                renderables = renderables.map { taggedRenderable(for: $0, defaultTag: defaultTag) }
-                collected.addAll(renderables)
+                collected.addAll(taggedIteration(renderables: renderables, defaultTag: defaultTag))
             }
         } else if let objects {
             for object in objects {
-                var renderables = evaluateKeyed(key: identifier?(object)) {
-                    objectContent!(object).Evaluate(context: context, options: options)
-                }
+                // TEMP: evaluation-phase key() REMOVED to test dual-keying hypothesis.
+                var renderables: kotlin.collections.List<Renderable>
+                renderables = objectContent!(object).Evaluate(context: context, options: options)
                 if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
                     collected.add(self)
                     break
@@ -132,16 +147,16 @@ public final class ForEach : View, Renderable, LazyItemFactory {
                     isFirst = false
                 }
                 if let identifier {
-                    renderables = renderables.map { taggedRenderable(for: $0, defaultTag: identifier(object)) }
+                    renderables = taggedIteration(renderables: renderables, defaultTag: identifier(object))
                 }
                 collected.addAll(renderables)
             }
         } else if let objectsBinding {
             let objects = objectsBinding.wrappedValue
             for i in 0..<objects.count {
-                var renderables = evaluateKeyed(key: identifier?(objects[i])) {
-                    objectsBindingContent!(objectsBinding, i).Evaluate(context: context, options: options)
-                }
+                // TEMP: evaluation-phase key() REMOVED to test dual-keying hypothesis.
+                var renderables: kotlin.collections.List<Renderable>
+                renderables = objectsBindingContent!(objectsBinding, i).Evaluate(context: context, options: options)
                 if isLazy, !isUnrollRequired(renderables: renderables, isFirst: isFirst, context: context) {
                     collected.add(self)
                     break
@@ -149,7 +164,7 @@ public final class ForEach : View, Renderable, LazyItemFactory {
                     isFirst = false
                 }
                 if let identifier {
-                    renderables = renderables.map { taggedRenderable(for: $0, defaultTag: identifier(objects[i])) }
+                    renderables = taggedIteration(renderables: renderables, defaultTag: identifier(objects[i]))
                 }
                 collected.addAll(renderables)
             }
@@ -253,6 +268,30 @@ public final class ForEach : View, Renderable, LazyItemFactory {
             }
             collector.objectBindingItems(objectsBinding, identifier!, editActions, onDeleteAction, onMoveAction, level, factory)
         }
+    }
+
+    /// Tag an entire iteration's renderables with a single key.
+    ///
+    /// When an iteration produces multiple renderables (e.g. `CounterCard` + `Divider`),
+    /// wraps them in a single `ComposeView` group bearing one tag. This prevents duplicate
+    /// sibling keys in container flat lists (VStack/HStack), which would break Compose's
+    /// movable-group matching and cause identity/state loss on deletion.
+    private func taggedIteration(
+        renderables: kotlin.collections.List<Renderable>,
+        defaultTag: Any?
+    ) -> kotlin.collections.List<Renderable> {
+        guard let defaultTag else { return renderables }
+        if renderables.size <= 1 {
+            return renderables.map { taggedRenderable(for: $0, defaultTag: defaultTag) }
+        }
+        identityLog("taggedIteration: grouping \(renderables.size) renderables under key=\(defaultTag)")
+        // Multiple renderables: wrap in a single group so the tag appears only once
+        let grouped = ComposeView(content: { context in
+            for renderable in renderables {
+                renderable.Render(context: context)
+            }
+        })
+        return listOf(taggedRenderable(for: grouped, defaultTag: defaultTag))
     }
 
     private func taggedRenderable(for renderable: Renderable, defaultTag: Any?) -> Renderable {

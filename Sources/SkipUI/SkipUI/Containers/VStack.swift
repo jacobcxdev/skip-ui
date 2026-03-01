@@ -92,6 +92,10 @@ public struct VStack : View, Renderable {
         if ids.size < renderables.size {
             rememberedNewIds.clear()
             let contentContext = context.content()
+            #if FUSE_IDENTITY_DEBUG
+            let probeA = remember { java.util.UUID.randomUUID().toString() }
+            android.util.Log.d("ComposeIdentity", "PROBE-A VStack.Render scope: \(probeA)")
+            #endif
             ComposeContainer(axis: .vertical, modifier: context.modifier) { modifier in
                 if layoutImplementationVersion == 0 {
                     // Maintain previous layout behavior for users who opt in
@@ -107,21 +111,32 @@ public struct VStack : View, Renderable {
                             $0.set_flexibleHeightModifier(flexibleHeightModifier)
                             return ComposeResult.ok
                         } in: {
+                            #if FUSE_IDENTITY_DEBUG
+                            let probeB = remember { java.util.UUID.randomUUID().toString() }
+                            android.util.Log.d("ComposeIdentity", "PROBE-B Column scope (v0): \(probeB)")
+                            #endif
                             var lastWasText: Bool? = nil
                             var lastWasSpacer: Bool? = nil
-                            for renderable in renderables {
-                                if let composeKey = renderable.composeKey {
-                                    // Emit spacing OUTSIDE key scope so that the composition
-                                    // structure within the key group is stable across position changes
-                                    let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion)
-                                    androidx.compose.runtime.key(composeKey) {
-                                        renderable.Render(context: contentContext)
-                                    }
-                                    lastWasText = spacingResult.0
-                                    lastWasSpacer = spacingResult.1
-                                } else {
-                                    (lastWasText, lastWasSpacer) = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, context: contentContext, layoutImplementationVersion: layoutImplementationVersion)
+                            // key() MUST be at the top level of the loop body — NOT inside
+                            // a conditional. An `if let` around key() creates per-iteration
+                            // replaceable groups that prevent Compose from matching movable
+                            // key groups across iterations when items are added/removed.
+                            for i in 0..<renderables.size {
+                                let renderable = renderables[i]
+                                let composeKey: Any = renderable.composeKey ?? i
+                                #if FUSE_IDENTITY_DEBUG
+                                android.util.Log.d("ComposeIdentity", "VStack key: composeKey=\(composeKey) type=\(type(of: composeKey)) renderable=\(type(of: renderable))")
+                                #endif
+                                let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion)
+                                androidx.compose.runtime.key(composeKey) {
+                                    #if FUSE_IDENTITY_DEBUG
+                                    let probeC = remember { java.util.UUID.randomUUID().toString() }
+                                    android.util.Log.d("ComposeIdentity", "PROBE-C key(\(composeKey)) group (v0): \(probeC)")
+                                    #endif
+                                    renderable.Render(context: contentContext)
                                 }
+                                lastWasText = spacingResult.0
+                                lastWasSpacer = spacingResult.1
                             }
                         }
                     }
@@ -134,19 +149,28 @@ public struct VStack : View, Renderable {
                             $0.set_flexibleHeightModifier(flexibleHeightModifier)
                             return ComposeResult.ok
                         } in: {
+                            #if FUSE_IDENTITY_DEBUG
+                            let probeB = remember { java.util.UUID.randomUUID().toString() }
+                            android.util.Log.d("ComposeIdentity", "PROBE-B VStackColumn scope (v1+): \(probeB)")
+                            #endif
                             var lastWasText: Bool? = nil
                             var lastWasSpacer: Bool? = nil
-                            for renderable in renderables {
-                                if let composeKey = renderable.composeKey {
-                                    let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion)
-                                    androidx.compose.runtime.key(composeKey) {
-                                        renderable.Render(context: contentContext)
-                                    }
-                                    lastWasText = spacingResult.0
-                                    lastWasSpacer = spacingResult.1
-                                } else {
-                                    (lastWasText, lastWasSpacer) = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, context: contentContext, layoutImplementationVersion: layoutImplementationVersion)
+                            for i in 0..<renderables.size {
+                                let renderable = renderables[i]
+                                let composeKey: Any = renderable.composeKey ?? i
+                                #if FUSE_IDENTITY_DEBUG
+                                android.util.Log.d("ComposeIdentity", "VStack key: composeKey=\(composeKey) type=\(type(of: composeKey)) renderable=\(type(of: renderable))")
+                                #endif
+                                let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion)
+                                androidx.compose.runtime.key(composeKey) {
+                                    #if FUSE_IDENTITY_DEBUG
+                                    let probeC = remember { java.util.UUID.randomUUID().toString() }
+                                    android.util.Log.d("ComposeIdentity", "PROBE-C key(\(composeKey)) group (v1+): \(probeC)")
+                                    #endif
+                                    renderable.Render(context: contentContext)
                                 }
+                                lastWasText = spacingResult.0
+                                lastWasSpacer = spacingResult.1
                             }
                         }
                     }

@@ -105,18 +105,16 @@ public struct HStack : View, Renderable {
                             return ComposeResult.ok
                         } in: {
                             var lastWasSpacer: Bool? = nil
-                            for renderable in renderables {
-                                if let composeKey = renderable.composeKey {
-                                    // Emit spacing OUTSIDE key scope so that the composition
-                                    // structure within the key group is stable across position changes
-                                    let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer)
-                                    androidx.compose.runtime.key(composeKey) {
-                                        renderable.Render(context: contentContext)
-                                    }
-                                    lastWasSpacer = spacingResult
-                                } else {
-                                    lastWasSpacer = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion, context: contentContext)
+                            // key() MUST be at the top level of the loop body — NOT inside
+                            // a conditional. See VStack.swift for detailed explanation.
+                            for i in 0..<renderables.size {
+                                let renderable = renderables[i]
+                                let composeKey: Any = renderable.composeKey ?? i
+                                let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer)
+                                androidx.compose.runtime.key(composeKey) {
+                                    renderable.Render(context: contentContext)
                                 }
+                                lastWasSpacer = spacingResult
                             }
                         }
                     }
@@ -130,16 +128,14 @@ public struct HStack : View, Renderable {
                             return ComposeResult.ok
                         } in: {
                             var lastWasSpacer: Bool? = nil
-                            for renderable in renderables {
-                                if let composeKey = renderable.composeKey {
-                                    let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer)
-                                    androidx.compose.runtime.key(composeKey) {
-                                        renderable.Render(context: contentContext)
-                                    }
-                                    lastWasSpacer = spacingResult
-                                } else {
-                                    lastWasSpacer = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion, context: contentContext)
+                            for i in 0..<renderables.size {
+                                let renderable = renderables[i]
+                                let composeKey: Any = renderable.composeKey ?? i
+                                let spacingResult = EmitAdaptiveSpacing(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasSpacer: lastWasSpacer)
+                                androidx.compose.runtime.key(composeKey) {
+                                    renderable.Render(context: contentContext)
                                 }
+                                lastWasSpacer = spacingResult
                             }
                         }
                     }

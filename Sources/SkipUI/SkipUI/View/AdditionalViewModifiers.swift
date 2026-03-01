@@ -1430,7 +1430,11 @@ final class TagModifier: RenderModifier {
             // ForEach items: wrap Render with key() to preserve identity across list mutations.
             // Without this, containers like VStack render ForEach items positionally in their
             // Column loop, causing state loss when items are added/removed.
-            androidx.compose.runtime.key(value) {
+            let convertedKey = composeKeyValue(value)
+            #if FUSE_IDENTITY_DEBUG
+            android.util.Log.d("ComposeIdentity", "TagModifier.Render: raw=\(value) type=\(type(of: value)) converted=\(convertedKey) type=\(type(of: convertedKey))")
+            #endif
+            androidx.compose.runtime.key(convertedKey) {
                 super.Render(content: content, context: context)
             }
         } else {
