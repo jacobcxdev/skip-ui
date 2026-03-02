@@ -94,10 +94,10 @@ extension Renderable {
 public func normalizeKey(_ raw: Any) -> Any {
     if raw is String || raw is Int || raw is Long { return raw }
     if let identifiable = raw as? any Identifiable {
-        return normalizeKey(identifiable.id)
+        return normalizeKey(identifiable.id as Any)
     }
     if let rawRepresentable = raw as? any RawRepresentable {
-        return normalizeKey(rawRepresentable.rawValue)
+        return normalizeKey(rawRepresentable.rawValue as Any)
     }
     return "\(raw)"
 }

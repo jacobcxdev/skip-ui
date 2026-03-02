@@ -93,7 +93,7 @@ public struct ZStack : View, Renderable {
         }, contentKey: {
             // Normalize idMap output through normalizeKey() to avoid SwiftHashable JNI equality issues.
             // See VStack.swift RenderAnimatedContent for explicitResetKey assessment.
-            $0.map { normalizeKey(arguments.idMap($0)) }
+            $0.map { r in arguments.idMap(r).map { normalizeKey($0) } }
         }, content: { state in
             let animation = Animation.current(isAnimating: transition.isRunning)
             if animation == nil {

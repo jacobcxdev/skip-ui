@@ -214,7 +214,7 @@ public struct VStack : View, Renderable {
             // invalidation when contentKey changes). The nested key-group approach (outer identityKey for
             // container loop matching, inner contentKey for AnimatedContent diff) provides sufficient
             // separation — identityKey controls positional stability while contentKey controls animation triggers.
-            $0.map { normalizeKey(arguments.idMap($0)) }
+            $0.map { r in arguments.idMap(r).map { normalizeKey($0) } }
         }, content: { state in
             let animation = Animation.current(isAnimating: self.transition.isRunning)
             if animation == nil {
