@@ -90,6 +90,8 @@ public struct LazyHGrid: View, Renderable {
                     $0.set_contentPadding(EdgeInsets())
                     return ComposeResult.ok
                 } in: {
+                let peerStore = androidx.compose.runtime.remember { PeerStore() }
+                CompositionLocalProvider(LocalPeerStore provides peerStore) {
                 LazyHorizontalGrid(state: gridState, modifier: modifier, rows: gridCells, horizontalArrangement: horizontalArrangement, verticalArrangement: verticalArrangement, contentPadding: contentPadding.asPaddingValues(), userScrollEnabled: isScrollEnabled, flingBehavior: flingBehavior) {
                     itemCollector.value.initialize(
                         startItemIndex: 0,
@@ -104,27 +106,36 @@ public struct LazyHGrid: View, Renderable {
                             let count = range.endExclusive - range.start
                             let key: ((Int) -> String)? = identifier == nil ? nil : { composeBundleNormalizedKey(for: identifier!($0 + range.start)) }
                             items(count: count, key: key) { index in
-                                Box(contentAlignment: boxAlignment) {
-                                    let scopedContext = context.content(scope: self)
-                                    factory(index + range.start, scopedContext).Render(context: scopedContext)
+                                let itemKey = key?(index) ?? String(index + range.start)
+                                CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(itemKey)) {
+                                    Box(contentAlignment: boxAlignment) {
+                                        let scopedContext = context.content(scope: self)
+                                        factory(index + range.start, scopedContext).Render(context: scopedContext)
+                                    }
                                 }
                             }
                         },
                         objectItems: { objects, identifier, _, _, _, _, factory in
                             let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objects[$0])) }
                             items(count: objects.count, key: key) { index in
-                                let scopedContext = context.content(scope: self)
-                                Box(contentAlignment: boxAlignment) {
-                                    factory(objects[index], scopedContext).Render(context: scopedContext)
+                                let itemKey = key(index)
+                                CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(itemKey)) {
+                                    let scopedContext = context.content(scope: self)
+                                    Box(contentAlignment: boxAlignment) {
+                                        factory(objects[index], scopedContext).Render(context: scopedContext)
+                                    }
                                 }
                             }
                         },
                         objectBindingItems: { objectsBinding, identifier, _, _, _, _, _, factory in
                             let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objectsBinding.wrappedValue[$0])) }
                             items(count: objectsBinding.wrappedValue.count, key: key) { index in
-                                let scopedContext = context.content(scope: self)
-                                Box(contentAlignment: boxAlignment) {
-                                    factory(objectsBinding, index, scopedContext).Render(context: scopedContext)
+                                let itemKey = key(index)
+                                CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(itemKey)) {
+                                    let scopedContext = context.content(scope: self)
+                                    Box(contentAlignment: boxAlignment) {
+                                        factory(objectsBinding, index, scopedContext).Render(context: scopedContext)
+                                    }
                                 }
                             }
                         },
@@ -155,6 +166,7 @@ public struct LazyHGrid: View, Renderable {
                         }
                     }
                 }
+                }  // closes CompositionLocalProvider(LocalPeerStore provides peerStore)
                 }
             }
         }
