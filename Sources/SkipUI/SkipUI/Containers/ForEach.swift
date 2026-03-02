@@ -4,6 +4,9 @@
 import Foundation
 #if SKIP
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 #endif
 
 private func identityLog(_ msg: String) {
@@ -95,7 +98,7 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         // Used by PeerStore to scope peer cache entries so siblings don't alias.
         if let store = LocalPeerStore.current {
             if peerStoreNamespace == nil {
-                peerStoreNamespace = AnyHashable(rememberSaveable { java.util.UUID.randomUUID().toString() })
+                peerStoreNamespace = rememberSaveable { java.util.UUID.randomUUID().toString() }
             }
             // Schedule eviction of peers for items that are no longer present.
             // SideEffect runs after every recomposition with the current data snapshot.
@@ -226,18 +229,18 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         var keys = Set<AnyHashable>()
         if let indexRange, let identifier {
             for index in indexRange() {
-                if let k = identifier(index) { keys.insert(k) }
+                if let k = identifier(index) { keys.insert(composeBundleNormalizedKey(for: k)) }
             }
         } else if let indexRange {
-            for index in indexRange() { keys.insert(AnyHashable(index)) }
+            for index in indexRange() { keys.insert(composeBundleNormalizedKey(for: index)) }
         } else if let objects, let identifier {
             for object in objects {
-                if let k = identifier(object) { keys.insert(k) }
+                if let k = identifier(object) { keys.insert(composeBundleNormalizedKey(for: k)) }
             }
         } else if let objectsBinding, let identifier {
             let objs = objectsBinding.wrappedValue
             for i in 0..<objs.count {
-                if let k = identifier(objs[i]) { keys.insert(k) }
+                if let k = identifier(objs[i]) { keys.insert(composeBundleNormalizedKey(for: k)) }
             }
         }
         return keys
