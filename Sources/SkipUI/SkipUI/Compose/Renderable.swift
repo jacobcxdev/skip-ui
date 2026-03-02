@@ -54,7 +54,9 @@ extension Renderable {
     /// - LazySectionHeader/Footer: does NOT forward, but only used in lazy contexts where identityKey is not consumed — safe
     /// - ViewRenderable: does NOT forward, but not placed inside ForEach-produced modifier chains — safe
     public var identityKey: Any? {
-        forEachModifier { ($0 as? IdentityKeyModifier)?.normalizedKey }
+        let key = forEachModifier { ($0 as? IdentityKeyModifier)?.normalizedKey }
+        android.util.Log.d("ComposeIdentity", "identityKey: renderable=\(type(of: self)) key=\(key ?? "nil") keyType=\(key.map { type(of: $0) } ?? "nil")")
+        return key
     }
 
     /// Selection tag for Picker/TabView binding.
@@ -79,14 +81,21 @@ extension Renderable {
 /// Callers guard against nil before calling normalizeKey(), so no explicit Optional
 /// unwrapping is needed here.
 public func normalizeKey(_ raw: Any) -> Any {
-    if raw is String || raw is Int || raw is Long { return raw }
+    if raw is String || raw is Int || raw is Long {
+        android.util.Log.d("ComposeIdentity", "normalizeKey: passthrough raw=\(raw) type=\(type(of: raw))")
+        return raw
+    }
     if let identifiable = raw as? any Identifiable {
+        android.util.Log.d("ComposeIdentity", "normalizeKey: Identifiable raw=\(raw) → id=\(identifiable.id)")
         return normalizeKey(identifiable.id as Any)
     }
     if let rawRepresentable = raw as? any RawRepresentable {
+        android.util.Log.d("ComposeIdentity", "normalizeKey: RawRepresentable raw=\(raw) → rawValue=\(rawRepresentable.rawValue)")
         return normalizeKey(rawRepresentable.rawValue as Any)
     }
-    return "\(raw)"
+    let result = "\(raw)"
+    android.util.Log.d("ComposeIdentity", "normalizeKey: toString raw=\(raw) type=\(type(of: raw)) → \(result)")
+    return result
 }
 
 /// New modifier carrying normalised identity. Transparent during rendering.
@@ -96,12 +105,16 @@ final class IdentityKeyModifier: RenderModifier {
     let normalizedKey: Any  // String | Int | Long — guaranteed by normalizeKey()
 
     init(key: Any) {
+        android.util.Log.d("ComposeIdentity", "IdentityKeyModifier.init: rawKey=\(key) type=\(type(of: key))")
         self.normalizedKey = normalizeKey(key)
+        android.util.Log.d("ComposeIdentity", "IdentityKeyModifier.init: normalizedKey=\(normalizedKey) type=\(type(of: normalizedKey))")
         super.init(role: .unspecified)
     }
 
     @Composable override func Render(content: Renderable, context: ComposeContext) {
-        content.Render(context: context)  // transparent — container consumes identity
+        CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(normalizedKey)) {
+            content.Render(context: context)
+        }
     }
 }
 
