@@ -40,7 +40,7 @@ public struct ZStack : View, Renderable {
     #if SKIP
     @Composable override func Render(context: ComposeContext) {
         let renderables = content.Evaluate(context: context, options: 0).filter { !$0.isSwiftUIEmptyView }
-        let idMap: (Renderable) -> Any? = { TagModifier.on(content: $0, role: .id)?.value }
+        let idMap: (Renderable) -> Any? = { TagModifier.on(content: $0, role: .id)?.value ?? $0.identityKey }
         let ids = renderables.mapNotNull(idMap)
         let rememberedIds = remember { mutableSetOf<Any>() }
         let newIds = ids.filter { !rememberedIds.contains($0) }
