@@ -51,10 +51,13 @@ public class PeerStore: RememberObserver {
     private var entries: [PeerCacheKey: PeerEntry] = [:]
 
     public func lookup(_ key: PeerCacheKey) -> PeerEntry? {
-        return entries[key]
+        let result = entries[key]
+        android.util.Log.d("ComposeIdentity", "[PeerStore] lookup: key={ns=\(String(describing: key.namespace)), item=\(key.itemKey), slot=\(key.viewSlotKey)} result=\(result != nil ? "HIT" : "MISS")")
+        return result
     }
 
     public func insert(_ key: PeerCacheKey, _ entry: PeerEntry) {
+        android.util.Log.d("ComposeIdentity", "[PeerStore] insert: key={ns=\(String(describing: key.namespace)), item=\(key.itemKey), slot=\(key.viewSlotKey)} peer=\(entry.peer)")
         // Store is a real owner — retain so GC finaliser can't free peer while store holds it.
         entry.retainFn(entry.peer)
         entries[key] = entry
@@ -62,6 +65,7 @@ public class PeerStore: RememberObserver {
 
     /// Remove a single entry and release its peer.
     public func evict(_ key: PeerCacheKey) {
+        android.util.Log.d("ComposeIdentity", "[PeerStore] evict: key={ns=\(String(describing: key.namespace)), item=\(key.itemKey), slot=\(key.viewSlotKey)}")
         if let entry = entries.removeValue(forKey: key) {
             entry.releaseFn(entry.peer)
         }
@@ -84,6 +88,7 @@ public class PeerStore: RememberObserver {
     public override func onForgotten() { releaseAll() }
 
     private func releaseAll() {
+        android.util.Log.d("ComposeIdentity", "[PeerStore] releaseAll: count=\(entries.count)")
         for (_, entry) in entries {
             entry.releaseFn(entry.peer)
         }
@@ -196,9 +201,7 @@ public func rememberViewPeer(
     let itemKey = LocalPeerStoreItemKey.current
     let namespace = LocalPeerStoreNamespace.current
 
-    #if FUSE_IDENTITY_DEBUG
-    android.util.Log.d("ComposeIdentity", "rememberViewPeer: store=\(store != nil) itemKey=\(String(describing: itemKey)) namespace=\(String(describing: namespace)) slotKey=\(slotKey)")
-    #endif
+    android.util.Log.d("ComposeIdentity", "[rememberViewPeer] store=\(store != nil) itemKey=\(String(describing: itemKey)) namespace=\(String(describing: namespace)) slotKey=\(slotKey)")
 
     if let store, let itemKey {
         let cacheKey = PeerCacheKey(namespace: namespace, itemKey: itemKey, viewSlotKey: slotKey)
