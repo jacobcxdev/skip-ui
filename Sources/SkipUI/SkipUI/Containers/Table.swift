@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.requiredWidthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -104,6 +105,9 @@ public final class Table<ObjectType, ID> : View, Renderable where ObjectType: Id
 
         let key: (Int) -> String = { composeBundleNormalizedKey(for: data[$0].id) }
         let isCompact = EnvironmentValues.shared.horizontalSizeClass == .compact
+        let peerStore = remember { PeerStore() }
+        // SKIP INSERT: val providedPeerStore = LocalPeerStore provides peerStore
+        CompositionLocalProvider(providedPeerStore) {
         LazyColumn(state: listState, modifier: modifier) {
             if headerSafeAreaHeight.value > 0 {
                 item {
@@ -118,7 +122,11 @@ public final class Table<ObjectType, ID> : View, Renderable where ObjectType: Id
             }
             items(count: data.count, key: key) { index in
                 let animationModifier = shouldAnimateItems() ? Modifier.animateItem() : Modifier
+                let itemKey = key(index)
+                // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
+                CompositionLocalProvider(providedItemKey) {
                 RenderRow(columnSpecs: columnSpecs, index: index, context: context, isCompact: isCompact, animationModifier: animationModifier)
+                }
             }
             if footerSafeAreaHeight.value > 0.0 {
                 item {
@@ -126,6 +134,7 @@ public final class Table<ObjectType, ID> : View, Renderable where ObjectType: Id
                 }
             }
         }
+        } // closes CompositionLocalProvider(LocalPeerStore provides peerStore)
     }
 
     @Composable private func RenderHeadersRow(columnSpecs: kotlin.collections.List<Renderable>, context: ComposeContext, animationModifier: Modifier) {

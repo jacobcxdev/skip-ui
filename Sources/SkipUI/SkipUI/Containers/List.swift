@@ -30,6 +30,7 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.SwipeToDismissBoxDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -242,6 +243,9 @@ public final class List : View, Renderable {
         }
 
         let itemContext = context.content()
+        let peerStore = remember { PeerStore() }
+        // SKIP INSERT: val providedPeerStore = LocalPeerStore provides peerStore
+        CompositionLocalProvider(providedPeerStore) {
         LazyColumn(state: reorderableState.listState, modifier: modifier) {
             // Read move trigger here so that a move will recompose list content
             let _ = moveTrigger.value
@@ -272,7 +276,11 @@ public final class List : View, Renderable {
                         let index = itemCollector.value.remapIndex(index, from: offset)
                         let itemModifier: Modifier = shouldAnimateItems() ? Modifier.animateItem() : Modifier
                         let renderable = factory(index + range.start, itemContext)
+                        let itemKey = keyValue ?? String(index + range.start)
+                        // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
+                        CompositionLocalProvider(providedItemKey) {
                         RenderEditableItem(content: renderable, level: level, context: itemContext, modifier: itemModifier, styling: styling, key: keyValue, index: index, onDelete: onDelete, onMove: onMove, reorderableState: reorderableState)
+                        }
                     }
                 },
                 objectItems: { objects, identifier, offset, onDelete, onMove, level, factory in
@@ -282,7 +290,11 @@ public final class List : View, Renderable {
                         let index = itemCollector.value.remapIndex(index, from: offset)
                         let itemModifier: Modifier = shouldAnimateItems() ? Modifier.animateItem() : Modifier
                         let renderable = factory(objects[index], itemContext)
+                        let itemKey = keyValue
+                        // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
+                        CompositionLocalProvider(providedItemKey) {
                         RenderEditableItem(content: renderable, level: level, context: itemContext, modifier: itemModifier, styling: styling, key: keyValue, index: index, onDelete: onDelete, onMove: onMove, reorderableState: reorderableState)
+                        }
                     }
                 },
                 objectBindingItems: { objectsBinding, identifier, offset, editActions, onDelete, onMove, level, factory in
@@ -292,7 +304,11 @@ public final class List : View, Renderable {
                         let index = itemCollector.value.remapIndex(index, from: offset)
                         let itemModifier: Modifier = shouldAnimateItems() ? Modifier.animateItem() : Modifier
                         let renderable = factory(objectsBinding, index, itemContext)
+                        let itemKey = keyValue
+                        // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
+                        CompositionLocalProvider(providedItemKey) {
                         RenderEditableItem(content: renderable, level: level, context: itemContext, modifier: itemModifier, styling: styling, objectsBinding: objectsBinding, key: keyValue, index: index, editActions: editActions, onDelete: onDelete, onMove: onMove, reorderableState: reorderableState)
+                        }
                     }
                 },
                 sectionHeader: { content in
@@ -346,8 +362,9 @@ public final class List : View, Renderable {
                 }
             }
         }
+        } // closes CompositionLocalProvider(LocalPeerStore provides peerStore)
     }
-    
+
     private static let horizontalInset = 16.0
     private static let verticalInset = 16.0
     private static let minimumItemHeight = 32.0

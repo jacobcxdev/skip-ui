@@ -115,16 +115,20 @@ class RetainedAnimatedItemsState {
             }
         }
 
-        // Step 3: Mark removed items for exit or remove immediately
+        // Step 3: Mark removed items for exit or collect for immediate removal
+        var immediateRemovalKeys = mutableListOf<Any>()
         for (key, item) in items {
             if !currentKeySet.contains(key) && item.visibility.targetState == true {
                 if let animation {
                     item.visibility.targetState = false
                     item.animation = animation
                 } else {
-                    items.remove(key)
+                    immediateRemovalKeys.add(key)
                 }
             }
+        }
+        for key in immediateRemovalKeys {
+            items.remove(key)
         }
 
         // Step 4: Prune completed exits
@@ -163,7 +167,7 @@ class RetainedAnimatedItemsState {
         let currentKeySet = currentKeys.toSet()
         // Collect exiting keys from prior order that are still in items (exit in progress)
         let exitingKeys = priorOrderedKeys.filter { !currentKeySet.contains($0) && items[$0] != nil }
-        if exitingKeys.isEmpty {
+        if exitingKeys.size == 0 {
             return currentKeys.toMutableList()
         }
 
