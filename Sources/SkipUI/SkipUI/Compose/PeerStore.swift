@@ -127,7 +127,7 @@ final class PeerStoreNamespaceModifier: RenderModifier {
         let parentNamespace = LocalPeerStoreNamespace.current
         let combinedNamespace: AnyHashable
         if let parentNamespace {
-            combinedNamespace = AnyHashable(PeerNamespacePath(parent: parentNamespace, current: namespace))
+            combinedNamespace = PeerNamespacePath(parent: parentNamespace, current: namespace)
         } else {
             combinedNamespace = namespace
         }
@@ -195,6 +195,10 @@ public func rememberViewPeer(
     let store = LocalPeerStore.current
     let itemKey = LocalPeerStoreItemKey.current
     let namespace = LocalPeerStoreNamespace.current
+
+    #if FUSE_IDENTITY_DEBUG
+    android.util.Log.d("ComposeIdentity", "rememberViewPeer: store=\(store != nil) itemKey=\(String(describing: itemKey)) namespace=\(String(describing: namespace)) slotKey=\(slotKey)")
+    #endif
 
     if let store, let itemKey {
         let cacheKey = PeerCacheKey(namespace: namespace, itemKey: itemKey, viewSlotKey: slotKey)
