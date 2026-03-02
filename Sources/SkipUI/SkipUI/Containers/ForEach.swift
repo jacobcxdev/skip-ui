@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 #endif
 
 private func identityLog(_ msg: String) {
-    #if SKIP && FUSE_IDENTITY_DEBUG
+    #if SKIP
     let _ = android.util.Log.d("ComposeIdentity", msg)
     #endif
 }
@@ -24,6 +24,7 @@ public final class ForEach : View, Renderable, LazyItemFactory {
     let editActions: EditActions
     var onDeleteAction: ((IndexSet) -> Void)?
     var onMoveAction: ((IndexSet, Int) -> Void)?
+    var peerStoreNamespace: AnyHashable?
 
     init(identifier: ((Any) -> AnyHashable?)? = nil, indexRange: (() -> Range<Int>)? = nil, indexedContent: ((Int) -> any View)? = nil, objects: (any RandomAccessCollection<Any>)? = nil, objectContent: ((Any) -> any View)? = nil, objectsBinding: Binding<any RandomAccessCollection<Any>>? = nil, objectsBindingContent: ((Binding<any RandomAccessCollection<Any>>, Int) -> any View)? = nil, editActions: EditActions = []) {
         self.identifier = identifier
@@ -89,6 +90,19 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         }
         let isLazy = EvaluateOptions(options).lazyItemLevel != nil
         identityLog("Evaluate: isLazy=\(isLazy), hasIdentifier=\(identifier != nil), hasObjects=\(objects != nil), objectCount=\(objects?.count ?? -1)")
+
+        // Create or recall stable namespace UUID for this ForEach instance.
+        // Used by PeerStore to scope peer cache entries so siblings don't alias.
+        if let store = LocalPeerStore.current {
+            if peerStoreNamespace == nil {
+                peerStoreNamespace = AnyHashable(rememberSaveable { java.util.UUID.randomUUID().toString() })
+            }
+            // Schedule eviction of peers for items that are no longer present.
+            // SideEffect runs after every recomposition with the current data snapshot.
+            let activeKeys = currentPeerStoreKeys()
+            let ns = peerStoreNamespace
+            SideEffect { store.cleanup(namespace: ns, activeKeys: activeKeys) }
+        }
 
         // ForEach views might contain nested lazy item factories such as Sections or other ForEach instances. They also
         // might contain more than one view per iteration, which isn't supported by Compose lazy processing. We execute
@@ -206,7 +220,31 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         return renderables.size > 1 || (renderables.firstOrNull() as? LazyItemFactory)?.shouldProduceLazyItems() == true
     }
 
+    // Returns the set of AnyHashable item keys currently in the data source.
+    // Used by the PeerStore eviction SideEffect.
+    private func currentPeerStoreKeys() -> Set<AnyHashable> {
+        var keys = Set<AnyHashable>()
+        if let indexRange, let identifier {
+            for index in indexRange() {
+                if let k = identifier(index) { keys.insert(k) }
+            }
+        } else if let indexRange {
+            for index in indexRange() { keys.insert(AnyHashable(index)) }
+        } else if let objects, let identifier {
+            for object in objects {
+                if let k = identifier(object) { keys.insert(k) }
+            }
+        } else if let objectsBinding, let identifier {
+            let objs = objectsBinding.wrappedValue
+            for i in 0..<objs.count {
+                if let k = identifier(objs[i]) { keys.insert(k) }
+            }
+        }
+        return keys
+    }
+
     override func produceLazyItems(collector: LazyItemCollector, modifiers: kotlin.collections.List<ModifierProtocol>, level: Int) {
+        identityLog("produceLazyItems: hasIndexRange=\(indexRange != nil) hasObjects=\(objects != nil) hasObjectsBinding=\(objectsBinding != nil) level=\(level)")
         if let indexRange {
             let factory: @Composable (Int, ComposeContext) -> Renderable = { index, context in
                 let renderables = ModifiedContent.apply(modifiers: modifiers, to: indexedContent!(index)).Evaluate(context: context, options: 0)
@@ -217,7 +255,12 @@ public final class ForEach : View, Renderable, LazyItemFactory {
                 } else {
                     tag = index
                 }
-                return taggedRenderable(for: renderable, defaultTag: tag)
+                identityLog("produceLazyItems.indexedFactory: index=\(index) tag=\(tag ?? "nil") renderable=\(type(of: renderable.strip()))")
+                let r = taggedRenderable(for: renderable, defaultTag: tag)
+                if let ns = peerStoreNamespace {
+                    return ModifiedContent(content: r, modifier: PeerStoreNamespaceModifier(namespace: ns))
+                }
+                return r
             }
             collector.indexedItems(indexRange(), identifier, onDeleteAction, onMoveAction, level, factory)
         } else if let objects {
@@ -225,9 +268,15 @@ public final class ForEach : View, Renderable, LazyItemFactory {
                 let renderables = ModifiedContent.apply(modifiers: modifiers, to: objectContent!(object)).Evaluate(context: context, options: 0)
                 let renderable = renderables.firstOrNull() ?? EmptyView()
                 guard let tag = identifier!(object) else {
+                    identityLog("produceLazyItems.objectFactory: object=\(object) tag=nil renderable=\(type(of: renderable.strip()))")
                     return renderable
                 }
-                return taggedRenderable(for: renderable, defaultTag: tag)
+                identityLog("produceLazyItems.objectFactory: object=\(object) tag=\(tag) renderable=\(type(of: renderable.strip()))")
+                let r = taggedRenderable(for: renderable, defaultTag: tag)
+                if let ns = peerStoreNamespace {
+                    return ModifiedContent(content: r, modifier: PeerStoreNamespaceModifier(namespace: ns))
+                }
+                return r
             }
             collector.objectItems(objects, identifier!, onDeleteAction, onMoveAction, level, factory)
         } else if let objectsBinding {
@@ -237,7 +286,11 @@ public final class ForEach : View, Renderable, LazyItemFactory {
                 guard let tag = identifier!(objects.wrappedValue[index]) else {
                     return renderable
                 }
-                return taggedRenderable(for: renderable, defaultTag: tag)
+                let r = taggedRenderable(for: renderable, defaultTag: tag)
+                if let ns = peerStoreNamespace {
+                    return ModifiedContent(content: r, modifier: PeerStoreNamespaceModifier(namespace: ns))
+                }
+                return r
             }
             collector.objectBindingItems(objectsBinding, identifier!, editActions, onDeleteAction, onMoveAction, level, factory)
         }
@@ -250,12 +303,20 @@ public final class ForEach : View, Renderable, LazyItemFactory {
     /// `key()` wrapping is removed in TagModifier.Render, the second modifier is a
     /// pure data annotation with negligible overhead.
     private func identifiedRenderable(for renderable: Renderable, key: Any?) -> Renderable {
-        guard let key else { return renderable }
+        guard let key else {
+            identityLog("identifiedRenderable: key=nil, skipping renderable=\(type(of: renderable.strip()))")
+            return renderable
+        }
         var result = renderable
-        if result.identityKey == nil {
+        let existingIdentityKey = result.identityKey
+        if existingIdentityKey == nil {
+            identityLog("identifiedRenderable: wrapping with IdentityKeyModifier key=\(key) type=\(type(of: key)) renderable=\(type(of: renderable.strip()))")
             result = ModifiedContent(content: result, modifier: IdentityKeyModifier(key: key))
+        } else {
+            identityLog("identifiedRenderable: already has identityKey=\(existingIdentityKey!) renderable=\(type(of: renderable.strip()))")
         }
         if TagModifier.on(content: result, role: .tag) == nil {
+            identityLog("identifiedRenderable: wrapping with TagModifier(.tag) key=\(key)")
             result = ModifiedContent(content: result, modifier: TagModifier(value: key, role: .tag))
         }
         return result
@@ -272,8 +333,12 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         renderables: kotlin.collections.List<Renderable>,
         key: Any?
     ) -> kotlin.collections.List<Renderable> {
-        guard let key else { return renderables }
+        guard let key else {
+            identityLog("identifiedIteration: key=nil, returning \(renderables.size) renderables as-is")
+            return renderables
+        }
         if renderables.size <= 1 {
+            identityLog("identifiedIteration: single renderable, key=\(key) type=\(type(of: key))")
             return renderables.map { identifiedRenderable(for: $0, key: key) }
         }
         identityLog("identifiedIteration: grouping \(renderables.size) renderables under key=\(key)")
@@ -291,8 +356,10 @@ public final class ForEach : View, Renderable, LazyItemFactory {
     @available(*, deprecated, message: "Use identifiedRenderable for eager paths")
     private func taggedRenderable(for renderable: Renderable, defaultTag: Any?) -> Renderable {
         if let defaultTag, TagModifier.on(content: renderable, role: .tag) == nil {
+            identityLog("taggedRenderable(lazy): wrapping tag=\(defaultTag) type=\(type(of: defaultTag)) renderable=\(type(of: renderable.strip()))")
             return ModifiedContent(content: renderable, modifier: TagModifier(value: defaultTag, role: .tag))
         } else {
+            identityLog("taggedRenderable(lazy): skipping tag=\(defaultTag ?? "nil") renderable=\(type(of: renderable.strip())) existingTag=\(TagModifier.on(content: renderable, role: .tag)?.value ?? "nil")")
             return renderable
         }
     }
