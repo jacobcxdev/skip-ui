@@ -101,7 +101,8 @@ public struct LazyVStack : View, Renderable {
                         return ComposeResult.ok
                     } in: {
                     let peerStore = androidx.compose.runtime.remember { PeerStore() }
-                    CompositionLocalProvider(LocalPeerStore provides peerStore) {
+                    // SKIP INSERT: val providedPeerStore = LocalPeerStore provides peerStore
+                    CompositionLocalProvider(providedPeerStore) {
                     LazyColumn(state: listState, modifier: Modifier.fillMaxWidth(), verticalArrangement: columnArrangement, horizontalAlignment: columnAlignment, contentPadding: contentPadding, userScrollEnabled: isScrollEnabled, flingBehavior: flingBehavior) {
                         itemCollector.value.initialize(
                             startItemIndex: isSearchable ? 1 : 0,
@@ -116,7 +117,8 @@ public struct LazyVStack : View, Renderable {
                                 items(count: count, key: key) { index in
                                     let scopedContext = context.content(scope: self)
                                     let itemKey = key?(index) ?? String(index + range.start)
-                                    CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(itemKey)) {
+                                    // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(itemKey)
+                                    CompositionLocalProvider(providedItemKey) {
                                         factory(index + range.start, scopedContext).Render(context: scopedContext)
                                     }
                                 }
@@ -126,7 +128,8 @@ public struct LazyVStack : View, Renderable {
                                 items(count: objects.count, key: key) { index in
                                     let scopedContext = context.content(scope: self)
                                     let itemKey = key(index)
-                                    CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(itemKey)) {
+                                    // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(itemKey)
+                                    CompositionLocalProvider(providedItemKey) {
                                         factory(objects[index], scopedContext).Render(context: scopedContext)
                                     }
                                 }
@@ -136,7 +139,8 @@ public struct LazyVStack : View, Renderable {
                                 items(count: objectsBinding.wrappedValue.count, key: key) { index in
                                     let scopedContext = context.content(scope: self)
                                     let itemKey = key(index)
-                                    CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(itemKey)) {
+                                    // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(itemKey)
+                                    CompositionLocalProvider(providedItemKey) {
                                         factory(objectsBinding, index, scopedContext).Render(context: scopedContext)
                                     }
                                 }

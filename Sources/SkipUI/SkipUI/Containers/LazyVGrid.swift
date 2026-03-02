@@ -108,7 +108,8 @@ public struct LazyVGrid: View, Renderable {
                         return ComposeResult.ok
                     } in: {
                     let peerStore = androidx.compose.runtime.remember { PeerStore() }
-                    CompositionLocalProvider(LocalPeerStore provides peerStore) {
+                    // SKIP INSERT: val providedPeerStore = LocalPeerStore provides peerStore
+                    CompositionLocalProvider(providedPeerStore) {
                     LazyVerticalGrid(state: gridState, modifier: Modifier.fillMaxWidth(), columns: gridCells, horizontalArrangement: horizontalArrangement, verticalArrangement: verticalArrangement, contentPadding: contentPadding, userScrollEnabled: isScrollEnabled, flingBehavior: flingBehavior) {
                         itemCollector.value.initialize(
                             startItemIndex: isSearchable ? 1 : 0,
@@ -124,7 +125,8 @@ public struct LazyVGrid: View, Renderable {
                                 let key: ((Int) -> String)? = identifier == nil ? nil : { composeBundleNormalizedKey(for: identifier!($0 + range.start)) }
                                 items(count: count, key: key) { index in
                                     let itemKey = key?(index) ?? String(index + range.start)
-                                    CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(itemKey)) {
+                                    // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(itemKey)
+                                    CompositionLocalProvider(providedItemKey) {
                                         Box(contentAlignment: boxAlignment) {
                                             let scopedContext = context.content(scope: self)
                                             factory(index + range.start, scopedContext).Render(context: scopedContext)
@@ -136,7 +138,8 @@ public struct LazyVGrid: View, Renderable {
                                 let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objects[$0])) }
                                 items(count: objects.count, key: key) { index in
                                     let itemKey = key(index)
-                                    CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(itemKey)) {
+                                    // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(itemKey)
+                                    CompositionLocalProvider(providedItemKey) {
                                         Box(contentAlignment: boxAlignment) {
                                             let scopedContext = context.content(scope: self)
                                             factory(objects[index], scopedContext).Render(context: scopedContext)
@@ -148,7 +151,8 @@ public struct LazyVGrid: View, Renderable {
                                 let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objectsBinding.wrappedValue[$0])) }
                                 items(count: objectsBinding.wrappedValue.count, key: key) { index in
                                     let itemKey = key(index)
-                                    CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(itemKey)) {
+                                    // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(itemKey)
+                                    CompositionLocalProvider(providedItemKey) {
                                         Box(contentAlignment: boxAlignment) {
                                             let scopedContext = context.content(scope: self)
                                             factory(objectsBinding, index, scopedContext).Render(context: scopedContext)

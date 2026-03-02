@@ -131,7 +131,8 @@ final class PeerStoreNamespaceModifier: RenderModifier {
         } else {
             combinedNamespace = namespace
         }
-        CompositionLocalProvider(LocalPeerStoreNamespace provides combinedNamespace) {
+        // SKIP INSERT: val providedNamespace = LocalPeerStoreNamespace provides combinedNamespace
+        CompositionLocalProvider(providedNamespace) {
             content.Render(context: context)
         }
     }

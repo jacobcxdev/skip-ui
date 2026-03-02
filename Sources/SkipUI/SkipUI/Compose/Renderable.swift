@@ -112,7 +112,8 @@ final class IdentityKeyModifier: RenderModifier {
     }
 
     @Composable override func Render(content: Renderable, context: ComposeContext) {
-        CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(normalizedKey)) {
+        // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(normalizedKey)
+        CompositionLocalProvider(providedItemKey) {
             content.Render(context: context)
         }
     }
