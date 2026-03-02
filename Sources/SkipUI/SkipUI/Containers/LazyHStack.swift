@@ -86,6 +86,8 @@ public struct LazyHStack : View, Renderable {
                     $0.set_contentPadding(EdgeInsets())
                     return ComposeResult.ok
                 } in: {
+                let peerStore = androidx.compose.runtime.remember { PeerStore() }
+                CompositionLocalProvider(LocalPeerStore provides peerStore) {
                 LazyRow(state: listState, modifier: modifier, horizontalArrangement: rowArrangement, verticalAlignment: rowAlignment, contentPadding: contentPadding.asPaddingValues(), userScrollEnabled: isScrollEnabled, flingBehavior: flingBehavior) {
                     itemCollector.value.initialize(
                         startItemIndex: 0,
@@ -98,19 +100,28 @@ public struct LazyHStack : View, Renderable {
                             let count = range.endExclusive - range.start
                             let key: ((Int) -> String)? = identifier == nil ? nil : { composeBundleNormalizedKey(for: identifier!($0 + range.start)) }
                             items(count: count, key: key) { index in
-                                factory(index + range.start, context.content(scope: self)).Render(context: context.content(scope: self))
+                                let itemKey = key?(index) ?? String(index + range.start)
+                                CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(itemKey)) {
+                                    factory(index + range.start, context.content(scope: self)).Render(context: context.content(scope: self))
+                                }
                             }
                         },
                         objectItems: { objects, identifier, _, _, _, _, factory in
                             let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objects[$0])) }
                             items(count: objects.count, key: key) { index in
-                                factory(objects[index], context.content(scope: self)).Render(context: context.content(scope: self))
+                                let itemKey = key(index)
+                                CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(itemKey)) {
+                                    factory(objects[index], context.content(scope: self)).Render(context: context.content(scope: self))
+                                }
                             }
                         },
                         objectBindingItems: { objectsBinding, identifier, _, _, _, _, _, factory in
                             let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objectsBinding.wrappedValue[$0])) }
                             items(count: objectsBinding.wrappedValue.count, key: key) { index in
-                                factory(objectsBinding, index, context.content(scope: self)).Render(context: context.content(scope: self))
+                                let itemKey = key(index)
+                                CompositionLocalProvider(LocalPeerStoreItemKey provides AnyHashable(itemKey)) {
+                                    factory(objectsBinding, index, context.content(scope: self)).Render(context: context.content(scope: self))
+                                }
                             }
                         },
                         sectionHeader: { content in
@@ -136,6 +147,7 @@ public struct LazyHStack : View, Renderable {
                         }
                     }
                 }
+                }  // closes CompositionLocalProvider(LocalPeerStore provides peerStore)
                 }
             }
         }
