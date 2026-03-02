@@ -382,6 +382,8 @@ public struct TabView : View, Renderable {
             ComposeContainer(modifier: context.modifier, fillWidth: true, fillHeight: true) { modifier in
                 // Don't use a Scaffold: it clips content beyond its bounds and prevents .ignoresSafeArea modifiers from working
                 Column(modifier: modifier.background(Color.background.colorImpl())) {
+                    let tabPeerStore = remember { PeerStore() }
+                    CompositionLocalProvider(LocalPeerStore provides tabPeerStore) {
                     NavHost(navController,
                             modifier: Modifier.fillMaxWidth().weight(Float(1.0)),
                             startDestination: "0",
@@ -410,13 +412,16 @@ public struct TabView : View, Renderable {
                                     // This block is called multiple times on tab switch. Use stable arguments that will prevent our entry from
                                     // recomposing when called with the same values
                                     let arguments = TabEntryArguments(tabIndex: tabIndex, modifier: contentModifier, safeArea: contentSafeArea)
-                                    PreferenceValues.shared.collectPreferences([tabBarPreferencesCollector]) {
-                                        RenderEntry(with: arguments, context: entryContext)
+                                    CompositionLocalProvider(LocalPeerStoreNamespace provides AnyHashable(String(describing: tabIndex))) {
+                                        PreferenceValues.shared.collectPreferences([tabBarPreferencesCollector]) {
+                                            RenderEntry(with: arguments, context: entryContext)
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                    }  // closes CompositionLocalProvider(LocalPeerStore provides tabPeerStore)
                     bottomBar()
                 }
             }
