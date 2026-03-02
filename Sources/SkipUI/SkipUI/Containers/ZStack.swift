@@ -2,16 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only WITH LGPL-3.0-linking-exception
 #if !SKIP_BRIDGE
 #if SKIP
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 #elseif canImport(CoreGraphics)
 import struct CoreGraphics.CGRect
@@ -40,88 +33,30 @@ public struct ZStack : View, Renderable {
     #if SKIP
     @Composable override func Render(context: ComposeContext) {
         let renderables = content.Evaluate(context: context, options: 0).filter { !$0.isSwiftUIEmptyView }
-        let idMap: (Renderable) -> Any? = { TagModifier.on(content: $0, role: .id)?.value ?? $0.identityKey }
-        let ids = renderables.mapNotNull(idMap)
-        let rememberedIds = remember { mutableSetOf<Any>() }
-        let newIds = ids.filter { !rememberedIds.contains($0) }
-        let rememberedNewIds = remember { mutableSetOf<Any>() }
 
-        rememberedNewIds.addAll(newIds)
-        rememberedIds.clear()
-        rememberedIds.addAll(ids)
+        let retainedState = rememberRetainedAnimatedItemsState()
+        let animation = Animation.current(isAnimating: retainedState.isAnimating)
+        retainedState.sync(renderables: renderables, animation: animation, keyExtractor: effectiveAnimatedKey)
+        let retainedItems = retainedState.orderedItems()
 
-        if ids.size < renderables.size {
-            rememberedNewIds.clear()
-            let contentContext = context.content()
-            ComposeContainer(eraseAxis: true, modifier: context.modifier) { modifier in
-                Box(modifier: modifier, contentAlignment: alignment.asComposeAlignment()) {
-                    var seenKeys = mutableSetOf<Any>()
-                    for i in 0..<renderables.size {
-                        let renderable = renderables[i]
-                        var composeKey: Any = renderable.identityKey ?? i
-                        if !seenKeys.add(composeKey) {
-                            composeKey = "\(composeKey)_dup\(i)"
-                        }
-                        androidx.compose.runtime.key(composeKey) {
-                            renderable.Render(context: contentContext)
+        let contentContext = context.content()
+        ComposeContainer(eraseAxis: true, modifier: context.modifier) { modifier in
+            Box(modifier: modifier, contentAlignment: alignment.asComposeAlignment()) {
+                for i in 0..<retainedItems.size {
+                    let item = retainedItems[i]
+                    androidx.compose.runtime.key(item.key) {
+                        AnimatedVisibility(
+                            visibleState: item.visibility,
+                            enter: resolvedEnter(item: item, axis: .overlay),
+                            exit: resolvedExit(item: item, axis: .overlay),
+                            label: "ZStackItem"
+                        ) {
+                            item.renderable.Render(context: contentContext)
                         }
                     }
                 }
-            }
-        } else {
-            ComposeContainer(eraseAxis: true, modifier: context.modifier) { modifier in
-                let arguments = AnimatedContentArguments(renderables: renderables, idMap: idMap, ids: ids, rememberedIds: rememberedIds, newIds: newIds, rememberedNewIds: rememberedNewIds, isBridged: isBridged)
-                RenderAnimatedContent(context: context, modifier: modifier, arguments: arguments)
             }
         }
-    }
-
-    @Composable private func RenderAnimatedContent(context: ComposeContext, modifier: Modifier, arguments: AnimatedContentArguments) {
-        AnimatedContent(modifier: modifier, targetState: arguments.renderables, transitionSpec: {
-            EnterTransition.None.togetherWith(ExitTransition.None).using(SizeTransform(clip: false) { initialSize, targetSize in
-                 if initialSize.width <= 0 || initialSize.height <= 0 {
-                     // When starting at zero size, immediately go to target size so views animate into proper place
-                     snap()
-                 } else if targetSize.width > initialSize.width || targetSize.height > initialSize.height {
-                     // Animate expansion so views slide into place
-                     tween()
-                 } else {
-                     // Delay contraction to give old view time to leave
-                     snap(delayMillis: Int(defaultAnimationDuration * 1000))
-                 }
-             })
-        }, contentKey: {
-            // Normalize idMap output through normalizeKey() to avoid SwiftHashable JNI equality issues.
-            // See VStack.swift RenderAnimatedContent for explicitResetKey assessment.
-            $0.map { r in arguments.idMap(r).map { normalizeKey($0) } }
-        }, content: { state in
-            let animation = Animation.current(isAnimating: transition.isRunning)
-            if animation == nil {
-                arguments.rememberedNewIds.clear()
-            }
-            Box(contentAlignment: alignment.asComposeAlignment()) {
-                var seenKeys = mutableSetOf<Any>()
-                for i in 0..<state.size {
-                    let renderable = state[i]
-                    var composeKey: Any = renderable.identityKey ?? i
-                    if !seenKeys.add(composeKey) {
-                        composeKey = "\(composeKey)_dup\(i)"
-                    }
-                    let id = arguments.idMap(renderable)
-                    var modifier: Modifier = Modifier
-                    if let animation, arguments.newIds.contains(id) || arguments.rememberedNewIds.contains(id) || !arguments.ids.contains(id) {
-                        let transition = TransitionModifier.transition(for: renderable) ?? OpacityTransition.shared
-                        let spec = animation.asAnimationSpec()
-                        let enter = transition.asEnterTransition(spec: spec)
-                        let exit = transition.asExitTransition(spec: spec)
-                        modifier = modifier.animateEnterExit(enter: enter, exit: exit)
-                    }
-                    androidx.compose.runtime.key(composeKey) {
-                        renderable.Render(context: context.content(modifier: modifier))
-                    }
-                }
-            }
-        }, label: "ZStack")
     }
     #else
     public var body: some View {
