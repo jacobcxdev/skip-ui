@@ -107,14 +107,10 @@ public let LocalPeerStoreItemKey = staticCompositionLocalOf<AnyHashable?> { nil 
 /// The namespace for the current scope (set by ForEach or TabView route).
 public let LocalPeerStoreNamespace = staticCompositionLocalOf<AnyHashable?> { nil }
 
-// MARK: - Namespace path
-
-/// Hierarchical namespace for nested ForEach instances.
-/// Composes parent namespace with current to create a unique path.
-private struct PeerNamespacePath: Hashable {
-    let parent: AnyHashable?
-    let current: AnyHashable
-}
+// MARK: - Namespace path (removed)
+// PeerNamespacePath struct was removed in Plan 16.
+// Its Hashable conformance didn't survive Kotlin transpilation (object identity instead of structural equality).
+// Namespaces are now composed as Strings in PeerStoreNamespaceModifier.Render.
 
 // MARK: - PeerStoreNamespaceModifier
 
@@ -130,11 +126,13 @@ final class PeerStoreNamespaceModifier: RenderModifier {
 
     @Composable override func Render(content: Renderable, context: ComposeContext) {
         let parentNamespace = LocalPeerStoreNamespace.current
+        let currentNormalized = composeBundleNormalizedKey(for: namespace)
         let combinedNamespace: AnyHashable
         if let parentNamespace {
-            combinedNamespace = PeerNamespacePath(parent: parentNamespace, current: namespace)
+            // String concatenation: structural equality guaranteed in Kotlin
+            combinedNamespace = "\(parentNamespace)/\(currentNormalized)"
         } else {
-            combinedNamespace = namespace
+            combinedNamespace = currentNormalized
         }
         // SKIP INSERT: val providedNamespace = LocalPeerStoreNamespace provides combinedNamespace
         CompositionLocalProvider(providedNamespace) {
@@ -201,7 +199,7 @@ public func rememberViewPeer(
     let itemKey = LocalPeerStoreItemKey.current
     let namespace = LocalPeerStoreNamespace.current
 
-    android.util.Log.d("ComposeIdentity", "[rememberViewPeer] store=\(store != nil) itemKey=\(String(describing: itemKey)) namespace=\(String(describing: namespace)) slotKey=\(slotKey)")
+    android.util.Log.d("ComposeIdentity", "[rememberViewPeer] store=\(store != nil) itemKey=\(String(describing: itemKey)) itemKeyType=\(itemKey != nil ? String(describing: type(of: itemKey!)) : "nil") namespace=\(String(describing: namespace)) slotKey=\(slotKey)")
 
     if let store, let itemKey {
         let cacheKey = PeerCacheKey(namespace: namespace, itemKey: itemKey, viewSlotKey: slotKey)
