@@ -130,7 +130,8 @@ final class PeerStoreNamespaceModifier: RenderModifier {
         let combinedNamespace: AnyHashable
         if let parentNamespace {
             // String concatenation: structural equality guaranteed in Kotlin
-            combinedNamespace = "\(parentNamespace)/\(currentNormalized)"
+            let combined = "\(parentNamespace)/\(currentNormalized)"
+            combinedNamespace = combined
         } else {
             combinedNamespace = currentNormalized
         }
