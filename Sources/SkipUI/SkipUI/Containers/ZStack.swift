@@ -36,7 +36,7 @@ public struct ZStack : View, Renderable {
 
         let retainedState = rememberRetainedAnimatedItemsState()
         let animation = Animation.current(isAnimating: retainedState.isAnimating)
-        retainedState.sync(renderables: renderables, animation: animation, keyExtractor: effectiveAnimatedKey)
+        retainedState.sync(renderables: renderables, animation: animation, keyExtractor: { renderable, index in effectiveAnimatedKey(renderable: renderable, index: index) })
         let retainedItems = retainedState.orderedItems()
 
         let contentContext = context.content()

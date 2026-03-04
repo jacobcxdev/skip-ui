@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only WITH LGPL-3.0-linking-exception
 #if !SKIP_BRIDGE
 import Foundation
+import OSLog
 #if SKIP
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.fadeIn
@@ -612,6 +613,14 @@ struct NavigationDestination {
     }
 }
 
+private let navLogger = Logger(subsystem: "skip.ui", category: "NAV_DEBUG")
+
+private func navLog(_ msg: String) {
+    #if FUSE_NAV_DEBUG
+    navLogger.debug("\(msg)")
+    #endif
+}
+
 @Stable final class Navigator {
     /// Route for the root of the navigation stack.
     static let rootRoute = "navigationroot"
@@ -670,6 +679,7 @@ struct NavigationDestination {
 
     /// Call with updated state on recompose.
     @Composable func didCompose(navController: NavHostController, destinations: NavigationDestinations, path: Binding<[Any]>?, navigationPath: Binding<NavigationPath>?, keyboardController: SoftwareKeyboardController?) {
+        navLog("Navigator.didCompose: hasPath=\(path != nil), pathCount=\(path?.wrappedValue.count ?? navigationPath?.wrappedValue.count)")
         self.navController = navController
         self.destinations = destinations
         self.path = path
@@ -687,6 +697,7 @@ struct NavigationDestination {
 
     /// Navigate to a target value specified in a `NavigationLink`.
     func navigate(to targetValue: Any) {
+        navLog("navigate(to): hasPath=\(path != nil), value=\(type(of: targetValue))")
         if let path {
             path.wrappedValue.append(targetValue)
         } else if let navigationPath {
@@ -817,6 +828,7 @@ struct NavigationDestination {
             return
         }
         let backStack = navController.currentBackStack.value
+        navLog("navigateToPath: pathCount=\(path.count), backStackCount=\(backStack.count())")
         guard !backStack.isEmpty() else {
             return
         }
@@ -835,6 +847,7 @@ struct NavigationDestination {
             pathIndex += 1
             backStackIndex += 1
         }
+        navLog("navigateToPath: pathIndex=\(pathIndex), backStackIndex=\(backStackIndex)")
 
         // If we exhausted the path and the back stack contains only post-path views, keep them in place. This allows
         // users to have a path binding but then append arbitrary views as leaves
@@ -850,15 +863,21 @@ struct NavigationDestination {
             }
         }
         guard !hasOnlyTrailingViews else {
+            navLog("navigateToPath: hasOnlyTrailingViews, skipping")
             return
         }
 
         // Pop back to last common value
-        for _ in 0..<(backStack.count() - backStackIndex) {
+        let popCount = backStack.count() - backStackIndex
+        if popCount > 0 {
+            navLog("navigateToPath: popping \(popCount) entries")
+        }
+        for _ in 0..<popCount {
             navController.popBackStack()
         }
         // Navigate to any new path values
         for i in pathIndex..<path.count {
+            navLog("navigateToPath: pushing path[\(i)]")
             let _ = navigate(toKeyed: path[i])
         }
     }
@@ -867,6 +886,7 @@ struct NavigationDestination {
         guard let key else {
             return false
         }
+        navLog("navigate(toKeyed): key=\(key), destFound=\(destinations[key] != nil)")
         guard let destination = destinations[key] else {
             if let type = key as? Any.Type {
                 for supertype in type.superclasses {
@@ -884,6 +904,7 @@ struct NavigationDestination {
     }
 
     private func navigate(route: String, destination: ((Any) -> any View)?, targetValue: Any, binding: Binding<Bool>? = nil) -> String? {
+        navLog("navigate(route): \(route)")
         // We see a top app bar glitch when the keyboard animates away after push, so manually dismiss it first
         keyboardController?.hide()
         navController.navigate(route)

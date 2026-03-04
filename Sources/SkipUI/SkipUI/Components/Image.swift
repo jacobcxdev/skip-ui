@@ -473,7 +473,22 @@ public struct Image : View, Renderable, Equatable {
         case "cart": return "Icons.Outlined.ShoppingCart" //􀍩
         // #148 Icons.Outlined.Star is not actually outlined!
         // case "star": return "Icons.Outlined.Star" //􀋃
+        case "number": return "Icons.Outlined.Tag" //􀋡
+        case "number.circle": return "Icons.Outlined.Tag" //􀁜
+        case "checklist": return "Icons.Outlined.Checklist" //􀷾
+        case "person.2": return "Icons.Outlined.People" //􀉫
+        case "person.2.fill": return "Icons.Filled.People" //􀉬
+        case "cylinder": return "Icons.Outlined.Storage" //􀤂
+        case "cylinder.fill": return "Icons.Filled.Storage" //􀤃
         case "hand.thumbsup": return "Icons.Outlined.ThumbUp" //􀉿
+        case "circle": return "Icons.Outlined.RadioButtonUnchecked" //􀁝
+        case "arrow.up.arrow.down": return "Icons.Outlined.SwapVert" //􀄬
+        case "person.circle": return "Icons.Outlined.AccountCircle" //􀉭
+        case "xmark.circle": return "Icons.Outlined.Close" //􀁡
+        case "pencil.circle": return "Icons.Outlined.Edit" //
+        case "square.and.pencil": return "Icons.Outlined.Edit" //
+        case "phone.circle": return "Icons.Outlined.Phone" //
+        case "envelope.badge": return "Icons.Outlined.MailOutline" //
         case "exclamationmark.triangle": return "Icons.Outlined.Warning" //􀇿
 
         case "person.crop.square.fill": return "Icons.Filled.AccountBox" //􀉺
@@ -497,6 +512,11 @@ public struct Image : View, Renderable, Equatable {
         case "cart.fill": return "Icons.Filled.ShoppingCart" //􀍪
         case "star.fill": return "Icons.Filled.Star" //􀋃
         case "hand.thumbsup.fill": return "Icons.Filled.ThumbUp" //􀊀
+        case "circle.fill": return "Icons.Filled.RadioButtonChecked" //􀁝
+        case "person.circle.fill": return "Icons.Filled.AccountCircle" //􀉮
+        case "xmark.circle.fill": return "Icons.Filled.Close" //
+        case "pencil.circle.fill": return "Icons.Filled.Edit" //
+        case "phone.circle.fill": return "Icons.Filled.Phone" //
         case "exclamationmark.triangle.fill": return "Icons.Filled.Warning" //􀇿
 
         default: return nil
@@ -555,7 +575,13 @@ public struct Image : View, Renderable, Equatable {
         case "Icons.Outlined.Share": return Icons.Outlined.Share
         case "Icons.Outlined.ShoppingCart": return Icons.Outlined.ShoppingCart
         case "Icons.Outlined.Star": return Icons.Outlined.Star
+        case "Icons.Outlined.Tag": return Icons.Outlined.Tag
+        case "Icons.Outlined.Checklist": return Icons.Outlined.Checklist
+        case "Icons.Outlined.People": return Icons.Outlined.People
+        case "Icons.Outlined.Storage": return Icons.Outlined.Storage
         case "Icons.Outlined.ThumbUp": return Icons.Outlined.ThumbUp
+        case "Icons.Outlined.RadioButtonUnchecked": return Icons.Outlined.RadioButtonUnchecked
+        case "Icons.Outlined.SwapVert": return Icons.Outlined.SwapVert
         case "Icons.Outlined.Warning": return Icons.Outlined.Warning
 
         case "Icons.Filled.AccountBox": return Icons.Filled.AccountBox
@@ -605,7 +631,10 @@ public struct Image : View, Renderable, Equatable {
         case "Icons.Filled.Share": return Icons.Filled.Share
         case "Icons.Filled.ShoppingCart": return Icons.Filled.ShoppingCart
         case "Icons.Filled.Star": return Icons.Filled.Star
+        case "Icons.Filled.People": return Icons.Filled.People
+        case "Icons.Filled.Storage": return Icons.Filled.Storage
         case "Icons.Filled.ThumbUp": return Icons.Filled.ThumbUp
+        case "Icons.Filled.RadioButtonChecked": return Icons.Filled.RadioButtonChecked
         case "Icons.Filled.Warning": return Icons.Filled.Warning
 
         case "Icons.Rounded.AccountBox": return Icons.Rounded.AccountBox

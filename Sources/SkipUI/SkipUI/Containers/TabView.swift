@@ -43,6 +43,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -413,7 +414,7 @@ public struct TabView : View, Renderable {
                                     // This block is called multiple times on tab switch. Use stable arguments that will prevent our entry from
                                     // recomposing when called with the same values
                                     let arguments = TabEntryArguments(tabIndex: tabIndex, modifier: contentModifier, safeArea: contentSafeArea)
-                                    // SKIP INSERT: val providedNamespace = LocalPeerStoreNamespace provides AnyHashable(String(describing: tabIndex))
+                                    // SKIP INSERT: val providedNamespace = LocalPeerStoreNamespace provides tabIndex.toString()
                                     CompositionLocalProvider(providedNamespace) {
                                         PreferenceValues.shared.collectPreferences([tabBarPreferencesCollector]) {
                                             RenderEntry(with: arguments, context: entryContext)

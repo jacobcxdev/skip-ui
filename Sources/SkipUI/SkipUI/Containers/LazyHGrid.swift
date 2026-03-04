@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -108,7 +109,7 @@ public struct LazyHGrid: View, Renderable {
                             let key: ((Int) -> String)? = identifier == nil ? nil : { composeBundleNormalizedKey(for: identifier!($0 + range.start)) }
                             items(count: count, key: key) { index in
                                 let itemKey = key?(index) ?? String(index + range.start)
-                                // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(itemKey)
+                                // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
                                 CompositionLocalProvider(providedItemKey) {
                                     Box(contentAlignment: boxAlignment) {
                                         let scopedContext = context.content(scope: self)
@@ -121,7 +122,7 @@ public struct LazyHGrid: View, Renderable {
                             let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objects[$0])) }
                             items(count: objects.count, key: key) { index in
                                 let itemKey = key(index)
-                                // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(itemKey)
+                                // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
                                 CompositionLocalProvider(providedItemKey) {
                                     let scopedContext = context.content(scope: self)
                                     Box(contentAlignment: boxAlignment) {
@@ -134,7 +135,7 @@ public struct LazyHGrid: View, Renderable {
                             let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objectsBinding.wrappedValue[$0])) }
                             items(count: objectsBinding.wrappedValue.count, key: key) { index in
                                 let itemKey = key(index)
-                                // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(itemKey)
+                                // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
                                 CompositionLocalProvider(providedItemKey) {
                                     let scopedContext = context.content(scope: self)
                                     Box(contentAlignment: boxAlignment) {

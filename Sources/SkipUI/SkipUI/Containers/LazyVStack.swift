@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -117,7 +118,7 @@ public struct LazyVStack : View, Renderable {
                                 items(count: count, key: key) { index in
                                     let scopedContext = context.content(scope: self)
                                     let itemKey = key?(index) ?? String(index + range.start)
-                                    // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(itemKey)
+                                    // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
                                     CompositionLocalProvider(providedItemKey) {
                                         factory(index + range.start, scopedContext).Render(context: scopedContext)
                                     }
@@ -128,7 +129,7 @@ public struct LazyVStack : View, Renderable {
                                 items(count: objects.count, key: key) { index in
                                     let scopedContext = context.content(scope: self)
                                     let itemKey = key(index)
-                                    // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(itemKey)
+                                    // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
                                     CompositionLocalProvider(providedItemKey) {
                                         factory(objects[index], scopedContext).Render(context: scopedContext)
                                     }
@@ -139,7 +140,7 @@ public struct LazyVStack : View, Renderable {
                                 items(count: objectsBinding.wrappedValue.count, key: key) { index in
                                     let scopedContext = context.content(scope: self)
                                     let itemKey = key(index)
-                                    // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(itemKey)
+                                    // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
                                     CompositionLocalProvider(providedItemKey) {
                                         factory(objectsBinding, index, scopedContext).Render(context: scopedContext)
                                     }

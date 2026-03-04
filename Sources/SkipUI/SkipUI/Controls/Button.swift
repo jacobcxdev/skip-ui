@@ -108,6 +108,12 @@ public struct Button : View, Renderable {
     }
 
     #if SKIP
+    /// Content padding for `.bordered` and `.borderedProminent` button styles, matching
+    /// SwiftUI's compact bordered appearance (~8pt per side). Material3's default
+    /// `ButtonDefaults.ContentPadding` (24dp per side) is far larger than SwiftUI's and causes
+    /// icon-only buttons in fixed frames to lose their content entirely.
+    private static let borderedContentPadding = PaddingValues(horizontal: 8.dp, vertical: 6.dp)
+
     @Composable override func Render(context: ComposeContext) {
         Self.RenderButton(label: label, context: context, role: role, action: action)
     }
@@ -141,7 +147,10 @@ public struct Button : View, Renderable {
                 } else {
                     colors = ButtonDefaults.filledTonalButtonColors()
                 }
-                var options = Material3ButtonOptions(onClick: action, modifier: modifier, enabled: isEnabled, shape: ButtonDefaults.filledTonalShape, colors: colors, elevation: ButtonDefaults.filledTonalButtonElevation())
+                // Use compact padding matching SwiftUI's bordered style (~8pt per side).
+                // Material3 default (24dp per side) is too large and causes icon-only buttons
+                // in fixed frames to lose their content entirely.
+                var options = Material3ButtonOptions(onClick: action, modifier: modifier, enabled: isEnabled, shape: ButtonDefaults.filledTonalShape, colors: colors, elevation: ButtonDefaults.filledTonalButtonElevation(), contentPadding: Self.borderedContentPadding)
                 if let updateOptions = EnvironmentValues.shared._material3Button {
                     options = updateOptions(options)
                 }
@@ -169,7 +178,7 @@ public struct Button : View, Renderable {
                 } else {
                     colors = ButtonDefaults.buttonColors()
                 }
-                var options = Material3ButtonOptions(onClick: action, modifier: modifier, enabled: isEnabled, shape: ButtonDefaults.shape, colors: colors, elevation: ButtonDefaults.buttonElevation())
+                var options = Material3ButtonOptions(onClick: action, modifier: modifier, enabled: isEnabled, shape: ButtonDefaults.shape, colors: colors, elevation: ButtonDefaults.buttonElevation(), contentPadding: Self.borderedContentPadding)
                 if let updateOptions = EnvironmentValues.shared._material3Button {
                     options = updateOptions(options)
                 }

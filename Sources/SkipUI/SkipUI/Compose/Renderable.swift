@@ -3,6 +3,7 @@
 #if !SKIP_BRIDGE
 #if SKIP
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 #endif
 
@@ -112,7 +113,7 @@ final class IdentityKeyModifier: RenderModifier {
     }
 
     @Composable override func Render(content: Renderable, context: ComposeContext) {
-        // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides AnyHashable(normalizedKey)
+        // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides normalizedKey
         CompositionLocalProvider(providedItemKey) {
             content.Render(context: context)
         }

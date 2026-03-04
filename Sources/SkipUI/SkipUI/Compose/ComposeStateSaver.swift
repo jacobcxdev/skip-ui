@@ -32,12 +32,19 @@ func composeBundleString(for value: Any?) -> String {
 /// - Note: Navigation.swift uses composeBundleString() for route serialisation — that is NOT identity
 ///   and stays as-is.
 func composeBundleNormalizedKey(for value: Any?) -> String {
-    guard let value else { return "nil" }
-    let normalized = normalizeKey(value)
-    if let str = normalized as? String {
-        return str
+    guard let value else {
+        android.util.Log.d("ComposeIdentity", "composeBundleNormalizedKey: nil input")
+        return "nil"
     }
-    return String(describing: normalized)
+    let normalized = normalizeKey(value)
+    let result: String
+    if let str = normalized as? String {
+        result = str
+    } else {
+        result = String(describing: normalized)
+    }
+    android.util.Log.d("ComposeIdentity", "composeBundleNormalizedKey: value=\(value) type=\(type(of: value)) → key=\(result)")
+    return result
 }
 
 /// Used in conjunction with `rememberSaveable` to save and restore state with SwiftUI-like behavior.
