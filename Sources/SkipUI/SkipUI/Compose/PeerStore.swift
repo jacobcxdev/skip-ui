@@ -7,6 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.currentCompositeKeyHash
 import androidx.compose.runtime.staticCompositionLocalOf
 
 // MARK: - Cache key
@@ -202,8 +203,13 @@ public func rememberViewPeer(
 
     android.util.Log.d("ComposeIdentity", "[rememberViewPeer] store=\(store != nil) itemKey=\(String(describing: itemKey)) itemKeyType=\(itemKey != nil ? String(describing: type(of: itemKey!)) : "nil") namespace=\(String(describing: namespace)) slotKey=\(slotKey)")
 
-    if let store, let itemKey {
-        let cacheKey = PeerCacheKey(namespace: namespace, itemKey: itemKey, viewSlotKey: slotKey)
+    if let store {
+        // When no explicit item key is provided (e.g. bridged views whose body runs
+        // on the Swift side where #if SKIP is false), fall back to Compose's
+        // currentCompositeKeyHash — a position-stable identifier unique per call site.
+        // SKIP INSERT: val _compositeKey: Any = currentCompositeKeyHash
+        let effectiveItemKey: AnyHashable = itemKey ?? _compositeKey
+        let cacheKey = PeerCacheKey(namespace: namespace, itemKey: effectiveItemKey, viewSlotKey: slotKey)
         if let cached = store.lookup(cacheKey) {
             retainFn(cached.peer)       // ownership for current Kotlin object
             if let inputsHash, cached.inputsHash != inputsHash, let refreshPeerFn {

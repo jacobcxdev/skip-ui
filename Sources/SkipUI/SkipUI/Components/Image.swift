@@ -490,7 +490,9 @@ public struct Image : View, Renderable, Equatable {
         case "bell.fill": return "Icons.Filled.Notifications" //􀋚
         case "person.fill": return "Icons.Filled.Person" //􀉪
         case "mappin.circle.fill": return "Icons.Filled.Place" //􀜈
+        case "pause.fill": return "Icons.Filled.Pause" //􀊆
         case "play.fill": return "Icons.Filled.PlayArrow" //􀊄
+        case "stop.fill": return "Icons.Filled.Stop" //􀛷
         case "paperplane.fill": return "Icons.Filled.Send" //􀈠
         case "gearshape.fill": return "Icons.Filled.Settings" //􀣌
         case "square.and.arrow.up.fill": return "Icons.Filled.Share" //􀈃
@@ -597,8 +599,10 @@ public struct Image : View, Renderable, Equatable {
         case "Icons.Filled.Person": return Icons.Filled.Person
         case "Icons.Filled.Phone": return Icons.Filled.Phone
         case "Icons.Filled.Place": return Icons.Filled.Place
+        case "Icons.Filled.Pause": return Icons.Filled.Pause
         case "Icons.Filled.PlayArrow": return Icons.Filled.PlayArrow
         case "Icons.Filled.Refresh": return Icons.Filled.Refresh
+        case "Icons.Filled.Stop": return Icons.Filled.Stop
         case "Icons.Filled.Search": return Icons.Filled.Search
         case "Icons.Filled.Send": return Icons.Filled.Send // Compose 1.6 TODO: Icons.AutoMirrored.Filled.Send
         case "Icons.Filled.Settings": return Icons.Filled.Settings
