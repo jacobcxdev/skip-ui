@@ -325,13 +325,12 @@ public final class ForEach : View, Renderable, LazyItemFactory {
         return result
     }
 
-    /// Identify an entire iteration's renderables with a single key.
+    /// Identify an iteration's renderables with a key.
     ///
-    /// When an iteration produces multiple renderables (e.g. `CounterCard` + `Divider`),
-    /// wraps them in a single `ComposeView` group bearing one `IdentityKeyModifier` +
-    /// one `TagModifier(.tag)`. This prevents duplicate sibling keys in container flat
-    /// lists (VStack/HStack), which would break Compose's movable-group matching and
-    /// cause identity/state loss on deletion.
+    /// Each renderable is individually tagged with `IdentityKeyModifier` (for PeerStore)
+    /// and `TagModifier(.tag)` (for Picker/TabView selection). No grouping is performed —
+    /// multiple renderables per iteration remain as separate items so containers (List,
+    /// VStack, HStack) can lay them out individually.
     private func identifiedIteration(
         renderables: kotlin.collections.List<Renderable>,
         key: Any?
@@ -340,18 +339,8 @@ public final class ForEach : View, Renderable, LazyItemFactory {
             identityLog("identifiedIteration: key=nil, returning \(renderables.size) renderables as-is")
             return renderables
         }
-        if renderables.size <= 1 {
-            identityLog("identifiedIteration: single renderable, key=\(key) type=\(type(of: key))")
-            return renderables.map { identifiedRenderable(for: $0, key: key) }
-        }
-        identityLog("identifiedIteration: grouping \(renderables.size) renderables under key=\(key)")
-        // Multiple renderables: wrap in a single group so the identity appears only once
-        let grouped = ComposeView(content: { context in
-            for renderable in renderables {
-                renderable.Render(context: context)
-            }
-        })
-        return listOf(identifiedRenderable(for: grouped, key: key))
+        identityLog("identifiedIteration: wrapping \(renderables.size) renderables individually, key=\(key) type=\(type(of: key))")
+        return renderables.map { identifiedRenderable(for: $0, key: key) }
     }
 
     /// Legacy tag wrapping for lazy paths. Lazy containers use their own key

@@ -2,11 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only WITH LGPL-3.0-linking-exception
 #if !SKIP_BRIDGE
 #if SKIP
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 #elseif canImport(CoreGraphics)
@@ -72,16 +79,91 @@ public struct VStack : View, Renderable {
             columnArrangement = Arrangement.spacedBy((spacing ?? Self.defaultSpacing).dp, alignment: androidx.compose.ui.Alignment.CenterVertically)
         }
 
-        let retainedState = rememberRetainedAnimatedItemsState()
-        let animation = Animation.current(isAnimating: retainedState.isAnimating)
-        retainedState.sync(renderables: renderables, animation: animation, keyExtractor: { renderable, index in effectiveAnimatedKey(renderable: renderable, index: index) })
-        let retainedItems = retainedState.orderedItems()
+        let idMap: (Renderable) -> Any? = { TagModifier.on(content: $0, role: .id)?.value }
+        let ids = renderables.mapNotNull(idMap)
+        let rememberedIds = remember { mutableSetOf<Any>() }
+        let newIds = ids.filter { !rememberedIds.contains($0) }
+        let rememberedNewIds = remember { mutableSetOf<Any>() }
 
-        let contentContext = context.content()
-        ComposeContainer(axis: .vertical, modifier: context.modifier) { modifier in
+        rememberedNewIds.addAll(newIds)
+        rememberedIds.clear()
+        rememberedIds.addAll(ids)
+
+        if ids.size < renderables.size {
+            rememberedNewIds.clear()
+            let contentContext = context.content()
+            ComposeContainer(axis: .vertical, modifier: context.modifier) { modifier in
+                if layoutImplementationVersion == 0 {
+                    // Maintain previous layout behavior for users who opt in
+                    Column(modifier: modifier, verticalArrangement: columnArrangement, horizontalAlignment: columnAlignment) {
+                        let flexibleHeightModifier: (Float?, Float?, Float?) -> Modifier = { ideal, min, max in
+                            var modifier: Modifier = Modifier
+                            if max?.isFlexibleExpanding == true {
+                                modifier = modifier.weight(Float(1)) // Only available in Column context
+                            }
+                            return modifier.applyNonExpandingFlexibleHeight(ideal: ideal, min: min, max: max)
+                        }
+                        EnvironmentValues.shared.setValues {
+                            $0.set_flexibleHeightModifier(flexibleHeightModifier)
+                            return ComposeResult.ok
+                        } in: {
+                            var lastWasText: Bool? = nil
+                            var lastWasSpacer: Bool? = nil
+                            for renderable in renderables {
+                                (lastWasText, lastWasSpacer) = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, context: contentContext, layoutImplementationVersion: layoutImplementationVersion)
+                            }
+                        }
+                    }
+                } else {
+                    VStackColumn(modifier: modifier, verticalArrangement: columnArrangement, horizontalAlignment: columnAlignment) {
+                        let flexibleHeightModifier: (Float?, Float?, Float?) -> Modifier = {
+                            return Modifier.flexible($0, $1, $2) // Only available in VStackColumn context
+                        }
+                        EnvironmentValues.shared.setValues {
+                            $0.set_flexibleHeightModifier(flexibleHeightModifier)
+                            return ComposeResult.ok
+                        } in: {
+                            var lastWasText: Bool? = nil
+                            var lastWasSpacer: Bool? = nil
+                            for renderable in renderables {
+                                (lastWasText, lastWasSpacer) = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, context: contentContext, layoutImplementationVersion: layoutImplementationVersion)
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            ComposeContainer(axis: .vertical, modifier: context.modifier) { modifier in
+                let arguments = AnimatedContentArguments(renderables: renderables, idMap: idMap, ids: ids, rememberedIds: rememberedIds, newIds: newIds, rememberedNewIds: rememberedNewIds, isBridged: isBridged)
+                RenderAnimatedContent(context: context, modifier: modifier, arguments: arguments, columnAlignment: columnAlignment, columnArrangement: columnArrangement, adaptiveSpacing: adaptiveSpacing, layoutImplementationVersion: layoutImplementationVersion)
+            }
+        }
+    }
+
+    @Composable private func RenderAnimatedContent(context: ComposeContext, modifier: Modifier, arguments: AnimatedContentArguments, columnAlignment: androidx.compose.ui.Alignment.Horizontal, columnArrangement: Arrangement.Vertical, adaptiveSpacing: Bool, layoutImplementationVersion: Int) {
+        AnimatedContent(modifier: modifier, targetState: arguments.renderables, transitionSpec: {
+            EnterTransition.None.togetherWith(ExitTransition.None).using(SizeTransform(clip: false) { initialSize, targetSize in
+                 if initialSize.width <= 0 || initialSize.height <= 0 {
+                     // When starting at zero size, immediately go to target size so views animate into proper place
+                     snap()
+                 } else if targetSize.width > initialSize.width || targetSize.height > initialSize.height {
+                     // Animate expansion so views slide into place
+                     tween()
+                 } else {
+                     // Delay contraction to give old view time to leave
+                     snap(delayMillis: Int(defaultAnimationDuration * 1000))
+                 }
+             })
+        }, contentKey: {
+            $0.map(arguments.idMap)
+        }, content: { state in
+            let animation = Animation.current(isAnimating: self.transition.isRunning)
+            if animation == nil {
+                arguments.rememberedNewIds.clear()
+            }
             if layoutImplementationVersion == 0 {
                 // Maintain previous layout behavior for users who opt in
-                Column(modifier: modifier, verticalArrangement: columnArrangement, horizontalAlignment: columnAlignment) {
+                Column(verticalArrangement: columnArrangement, horizontalAlignment: columnAlignment) {
                     let flexibleHeightModifier: (Float?, Float?, Float?) -> Modifier = { ideal, min, max in
                         var modifier: Modifier = Modifier
                         if max?.isFlexibleExpanding == true {
@@ -95,31 +177,25 @@ public struct VStack : View, Renderable {
                     } in: {
                         var lastWasText: Bool? = nil
                         var lastWasSpacer: Bool? = nil
-                        for i in 0..<retainedItems.size {
-                            let item = retainedItems[i]
-                            // Only emit spacing for items that are (or will be) visible
-                            if item.visibility.targetState == true {
-                                let spacingResult = EmitAdaptiveSpacing(renderable: item.renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion)
-                                lastWasText = spacingResult.0
-                                lastWasSpacer = spacingResult.1
+                        for renderable in state {
+                            let id = arguments.idMap(renderable)
+                            var modifier: Modifier = Modifier
+                            if let animation, arguments.newIds.contains(id) || arguments.rememberedNewIds.contains(id) || !arguments.ids.contains(id) {
+                                let transition = TransitionModifier.transition(for: renderable) ?? OpacityTransition.shared
+                                let spec = animation.asAnimationSpec()
+                                let enter = transition.asEnterTransition(spec: spec)
+                                let exit = transition.asExitTransition(spec: spec)
+                                modifier = modifier.animateEnterExit(enter: enter, exit: exit)
                             }
-                            androidx.compose.runtime.key(item.key) {
-                                AnimatedVisibility(
-                                    visibleState: item.visibility,
-                                    enter: resolvedEnter(item: item, axis: .vertical),
-                                    exit: resolvedExit(item: item, axis: .vertical),
-                                    label: "VStackItem"
-                                ) {
-                                    item.renderable.Render(context: contentContext)
-                                }
-                            }
+                            let contentContext = context.content(modifier: modifier)
+                            (lastWasText, lastWasSpacer) = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion, context: contentContext)
                         }
                     }
                 }
             } else {
-                VStackColumn(modifier: modifier, verticalArrangement: columnArrangement, horizontalAlignment: columnAlignment) {
+                VStackColumn(verticalArrangement: columnArrangement, horizontalAlignment: columnAlignment) {
                     let flexibleHeightModifier: (Float?, Float?, Float?) -> Modifier = {
-                        return Modifier.flexible($0, $1, $2) // Only available in VStackColumn context
+                        Modifier.flexible($0, $1, $2) // Only available in VStackColumn context
                     }
                     EnvironmentValues.shared.setValues {
                         $0.set_flexibleHeightModifier(flexibleHeightModifier)
@@ -127,53 +203,23 @@ public struct VStack : View, Renderable {
                     } in: {
                         var lastWasText: Bool? = nil
                         var lastWasSpacer: Bool? = nil
-                        for i in 0..<retainedItems.size {
-                            let item = retainedItems[i]
-                            // Only emit spacing for items that are (or will be) visible
-                            if item.visibility.targetState == true {
-                                let spacingResult = EmitAdaptiveSpacing(renderable: item.renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion)
-                                lastWasText = spacingResult.0
-                                lastWasSpacer = spacingResult.1
+                        for renderable in state {
+                            let id = arguments.idMap(renderable)
+                            var modifier: Modifier = Modifier
+                            if let animation, arguments.newIds.contains(id) || arguments.rememberedNewIds.contains(id) || !arguments.ids.contains(id) {
+                                let transition = TransitionModifier.transition(for: renderable) ?? OpacityTransition.shared
+                                let spec = animation.asAnimationSpec()
+                                let enter = transition.asEnterTransition(spec: spec)
+                                let exit = transition.asExitTransition(spec: spec)
+                                modifier = modifier.animateEnterExit(enter: enter, exit: exit)
                             }
-                            androidx.compose.runtime.key(item.key) {
-                                AnimatedVisibility(
-                                    visibleState: item.visibility,
-                                    enter: resolvedEnter(item: item, axis: .vertical),
-                                    exit: resolvedExit(item: item, axis: .vertical),
-                                    label: "VStackItem"
-                                ) {
-                                    item.renderable.Render(context: contentContext)
-                                }
-                            }
+                            let contentContext = context.content(modifier: modifier)
+                            (lastWasText, lastWasSpacer) = RenderSpaced(renderable: renderable, adaptiveSpacing: adaptiveSpacing, lastWasText: lastWasText, lastWasSpacer: lastWasSpacer, layoutImplementationVersion: layoutImplementationVersion, context: contentContext)
                         }
                     }
                 }
             }
-        }
-    }
-
-    /// Emit adaptive spacing before a renderable, outside any key scope.
-    /// Returns (isText, isSpacer) tracking info, or (nil, nil) when not adaptive.
-    @Composable private func EmitAdaptiveSpacing(renderable: Renderable, adaptiveSpacing: Bool, lastWasText: Bool?, lastWasSpacer: Bool?, layoutImplementationVersion: Int) -> (Bool?, Bool?) {
-        guard adaptiveSpacing else {
-            return (nil, nil)
-        }
-        let stripped = renderable.strip()
-        let isText = stripped is Text && renderable.forEachModifier { $0.role == .spacing ? true : nil } == true
-        let isSpacer = stripped is Spacer
-        if layoutImplementationVersion == 0 {
-            if let lastWasText {
-                let spacing = lastWasText && isText ? (spacing ?? Self.textSpacing) : (spacing ?? Self.defaultSpacing)
-                androidx.compose.foundation.layout.Spacer(modifier: Modifier.height(spacing.dp))
-            }
-        } else {
-            // Add spacing before any non-Spacer
-            if let lastWasSpacer, !lastWasSpacer && !isSpacer {
-                let spacing = lastWasText == true && isText ? (spacing ?? Self.textSpacing) : (spacing ?? Self.defaultSpacing)
-                androidx.compose.foundation.layout.Spacer(modifier: Modifier.height(spacing.dp))
-            }
-        }
-        return (isText, isSpacer)
+        }, label: "VStack")
     }
 
     @Composable private func RenderSpaced(renderable: Renderable, adaptiveSpacing: Bool, lastWasText: Bool?, lastWasSpacer: Bool?, layoutImplementationVersion: Int, context: ComposeContext) -> (Bool?, Bool?) {
