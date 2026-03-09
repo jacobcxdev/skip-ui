@@ -4,6 +4,7 @@
 import Foundation
 #if SKIP
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,14 +27,11 @@ import androidx.compose.material.pullrefresh.PullRefreshState
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.Icon
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.SwipeToDismissBoxDefaults
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -244,17 +242,22 @@ public final class List : View, Renderable {
 
         let itemContext = context.content()
         let peerStore = remember { PeerStore() }
+        let activeSwipeKey = remember { mutableStateOf<Any?>(nil) }
+        let composedEditableKeys = remember { mutableSetOf<String>() }
+        let deletionSurvivorKeys = remember { mutableStateOf(Set<String>()) }
+        let isDestructiveDeleteAnimating = remember { mutableStateOf(false) }
+        let deletedItemKey = remember { mutableStateOf<String?>(nil) }
         // SKIP INSERT: val providedPeerStore = LocalPeerStore provides peerStore
         CompositionLocalProvider(providedPeerStore) {
         LazyColumn(state: reorderableState.listState, modifier: modifier) {
             // Read move trigger here so that a move will recompose list content
             let _ = moveTrigger.value
+            composedEditableKeys.clear()
             let shouldAnimateItems: @Composable () -> Bool = {
                 // We disable animation to prevent filtered items from animating when they return
                 let animate = !forceUnanimatedItems.value && EnvironmentValues.shared._searchableState?.isSearching.value != true
                 return animate
             }
-
             // Initialize the factory context with closures that use the LazyListScope to generate items
             var startItemIndex = hasHeader ? 1 : 0 // Header inset
             if isSearchable {
@@ -264,7 +267,7 @@ public final class List : View, Renderable {
                 startItemIndex: startItemIndex,
                 item: { renderable, level in
                     item {
-                        let itemModifier: Modifier = shouldAnimateItems() ? Modifier.animateItem() : Modifier
+                        let itemModifier: Modifier = shouldAnimateItems() ? Modifier.animateItem(fadeInSpec: nil, placementSpec: tween(durationMillis: 350), fadeOutSpec: nil) : Modifier
                         RenderItem(content: renderable, level: level, context: itemContext, modifier: itemModifier, styling: styling)
                     }
                 },
@@ -273,13 +276,31 @@ public final class List : View, Renderable {
                     let key: ((Int) -> String)? = identifier == nil ? nil : { composeBundleNormalizedKey(for: identifier!(range.start + itemCollector.value.remapIndex($0, from: offset))) }
                     items(count: count, key: key) { index in
                         let keyValue = key?(index) // Key closure already remaps index
+                        if let keyValue { composedEditableKeys.add(keyValue) }
                         let index = itemCollector.value.remapIndex(index, from: offset)
-                        let itemModifier: Modifier = shouldAnimateItems() ? Modifier.animateItem() : Modifier
+                        let isDeleteAnimating = isDestructiveDeleteAnimating.value
+                        let isDeletedItem = isDeleteAnimating && keyValue != nil && keyValue! == deletedItemKey.value
+                        let isSurvivor = isDeleteAnimating && (isDeletedItem || (keyValue != nil && deletionSurvivorKeys.value.contains(keyValue!)))
+                        let itemModifier: Modifier
+                        if !shouldAnimateItems() {
+                            itemModifier = Modifier
+                        } else if isDeleteAnimating {
+                            itemModifier = Modifier.animateItem(fadeInSpec: nil, placementSpec: tween(durationMillis: 0), fadeOutSpec: nil)
+                        } else {
+                            itemModifier = Modifier.animateItem(fadeInSpec: nil, placementSpec: tween(durationMillis: 350), fadeOutSpec: nil)
+                        }
                         let renderable = factory(index + range.start, itemContext)
                         let itemKey = keyValue ?? String(index + range.start)
                         // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
-                        CompositionLocalProvider(providedItemKey) {
-                        RenderEditableItem(content: renderable, level: level, context: itemContext, modifier: itemModifier, styling: styling, key: keyValue, index: index, onDelete: onDelete, onMove: onMove, reorderableState: reorderableState)
+                        let itemContent: @Composable () -> Void = {
+                            CompositionLocalProvider(providedItemKey) {
+                            RenderEditableItem(content: renderable, level: level, context: itemContext, modifier: itemModifier, styling: styling, key: keyValue, index: index, onDelete: onDelete, onMove: onMove, reorderableState: reorderableState, activeSwipeKey: activeSwipeKey, deletionSurvivorKeys: deletionSurvivorKeys, isDestructiveDeleteAnimating: isDestructiveDeleteAnimating, deletedItemKey: deletedItemKey, composedEditableKeys: composedEditableKeys)
+                            }
+                        }
+                        if isDeleteAnimating && !isSurvivor {
+                            HeightGrowthBox(durationMillis: 350) { itemContent() }
+                        } else {
+                            itemContent()
                         }
                     }
                 },
@@ -287,13 +308,31 @@ public final class List : View, Renderable {
                     let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objects[itemCollector.value.remapIndex($0, from: offset)])) }
                     items(count: objects.count, key: key) { index in
                         let keyValue = key(index) // Key closure already remaps index
+                        composedEditableKeys.add(keyValue)
                         let index = itemCollector.value.remapIndex(index, from: offset)
-                        let itemModifier: Modifier = shouldAnimateItems() ? Modifier.animateItem() : Modifier
+                        let isDeleteAnimating = isDestructiveDeleteAnimating.value
+                        let isDeletedItem = isDeleteAnimating && keyValue == deletedItemKey.value
+                        let isSurvivor = isDeleteAnimating && (isDeletedItem || deletionSurvivorKeys.value.contains(keyValue))
+                        let itemModifier: Modifier
+                        if !shouldAnimateItems() {
+                            itemModifier = Modifier
+                        } else if isDeleteAnimating {
+                            itemModifier = Modifier.animateItem(fadeInSpec: nil, placementSpec: tween(durationMillis: 0), fadeOutSpec: nil)
+                        } else {
+                            itemModifier = Modifier.animateItem(fadeInSpec: nil, placementSpec: tween(durationMillis: 350), fadeOutSpec: nil)
+                        }
                         let renderable = factory(objects[index], itemContext)
                         let itemKey = keyValue
                         // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
-                        CompositionLocalProvider(providedItemKey) {
-                        RenderEditableItem(content: renderable, level: level, context: itemContext, modifier: itemModifier, styling: styling, key: keyValue, index: index, onDelete: onDelete, onMove: onMove, reorderableState: reorderableState)
+                        let itemContent: @Composable () -> Void = {
+                            CompositionLocalProvider(providedItemKey) {
+                            RenderEditableItem(content: renderable, level: level, context: itemContext, modifier: itemModifier, styling: styling, key: keyValue, index: index, onDelete: onDelete, onMove: onMove, reorderableState: reorderableState, activeSwipeKey: activeSwipeKey, deletionSurvivorKeys: deletionSurvivorKeys, isDestructiveDeleteAnimating: isDestructiveDeleteAnimating, deletedItemKey: deletedItemKey, composedEditableKeys: composedEditableKeys)
+                            }
+                        }
+                        if isDeleteAnimating && !isSurvivor {
+                            HeightGrowthBox(durationMillis: 350) { itemContent() }
+                        } else {
+                            itemContent()
                         }
                     }
                 },
@@ -301,13 +340,31 @@ public final class List : View, Renderable {
                     let key: (Int) -> String = { composeBundleNormalizedKey(for: identifier(objectsBinding.wrappedValue[itemCollector.value.remapIndex($0, from: offset)])) }
                     items(count: objectsBinding.wrappedValue.count, key: key) { index in
                         let keyValue = key(index) // Key closure already remaps index
+                        composedEditableKeys.add(keyValue)
                         let index = itemCollector.value.remapIndex(index, from: offset)
-                        let itemModifier: Modifier = shouldAnimateItems() ? Modifier.animateItem() : Modifier
+                        let isDeleteAnimating = isDestructiveDeleteAnimating.value
+                        let isDeletedItem = isDeleteAnimating && keyValue == deletedItemKey.value
+                        let isSurvivor = isDeleteAnimating && (isDeletedItem || deletionSurvivorKeys.value.contains(keyValue))
+                        let itemModifier: Modifier
+                        if !shouldAnimateItems() {
+                            itemModifier = Modifier
+                        } else if isDeleteAnimating {
+                            itemModifier = Modifier.animateItem(fadeInSpec: nil, placementSpec: tween(durationMillis: 0), fadeOutSpec: nil)
+                        } else {
+                            itemModifier = Modifier.animateItem(fadeInSpec: nil, placementSpec: tween(durationMillis: 350), fadeOutSpec: nil)
+                        }
                         let renderable = factory(objectsBinding, index, itemContext)
                         let itemKey = keyValue
                         // SKIP INSERT: val providedItemKey = LocalPeerStoreItemKey provides itemKey
-                        CompositionLocalProvider(providedItemKey) {
-                        RenderEditableItem(content: renderable, level: level, context: itemContext, modifier: itemModifier, styling: styling, objectsBinding: objectsBinding, key: keyValue, index: index, editActions: editActions, onDelete: onDelete, onMove: onMove, reorderableState: reorderableState)
+                        let itemContent: @Composable () -> Void = {
+                            CompositionLocalProvider(providedItemKey) {
+                            RenderEditableItem(content: renderable, level: level, context: itemContext, modifier: itemModifier, styling: styling, objectsBinding: objectsBinding, key: keyValue, index: index, editActions: editActions, onDelete: onDelete, onMove: onMove, reorderableState: reorderableState, activeSwipeKey: activeSwipeKey, deletionSurvivorKeys: deletionSurvivorKeys, isDestructiveDeleteAnimating: isDestructiveDeleteAnimating, deletedItemKey: deletedItemKey, composedEditableKeys: composedEditableKeys)
+                            }
+                        }
+                        if isDeleteAnimating && !isSurvivor {
+                            HeightGrowthBox(durationMillis: 350) { itemContent() }
+                        } else {
+                            itemContent()
                         }
                     }
                 },
@@ -478,7 +535,7 @@ public final class List : View, Renderable {
         }
     }
 
-    @Composable private func RenderEditableItem(content: Renderable, level: Int, context: ComposeContext, modifier: Modifier, styling: ListStyling, objectsBinding: Binding<RandomAccessCollection<Any>>? = nil, key: String?, index: Int, editActions: EditActions = [], onDelete: ((IndexSet) -> Void)?, onMove: ((IndexSet, Int) -> Void)?, reorderableState: ReorderableLazyListState) {
+    @Composable private func RenderEditableItem(content: Renderable, level: Int, context: ComposeContext, modifier: Modifier, styling: ListStyling, objectsBinding: Binding<RandomAccessCollection<Any>>? = nil, key: String?, index: Int, editActions: EditActions = [], onDelete: ((IndexSet) -> Void)?, onMove: ((IndexSet, Int) -> Void)?, reorderableState: ReorderableLazyListState, activeSwipeKey: MutableState<Any?>, deletionSurvivorKeys: MutableState<Set<String>>, isDestructiveDeleteAnimating: MutableState<Bool>, deletedItemKey: MutableState<String?>, composedEditableKeys: MutableSet<String>) {
         guard !content.isSwiftUIEmptyView else {
             return
         }
@@ -489,12 +546,27 @@ public final class List : View, Renderable {
         let editActionsModifier = EditActionsModifier.combined(for: content)
         let isDeleteEnabled = (editActions.contains(.delete) || onDelete != nil) && editActionsModifier.isDeleteDisabled != true
         let isMoveEnabled = (editActions.contains(.move) || onMove != nil) && editActionsModifier.isMoveDisabled != true
-        guard isDeleteEnabled || isMoveEnabled else {
+        let hasExplicitSwipeActions = SwipeActionsModifier.hasSwipeActions(content)
+        guard isDeleteEnabled || isMoveEnabled || hasExplicitSwipeActions else {
             RenderItem(content: content, level: level, context: context, modifier: modifier, styling: styling)
             return
         }
 
-        if isDeleteEnabled {
+        // Extract explicit swipe actions from the modifier chain
+        var trailingActions: kotlin.collections.List<SwipeActionData> = listOf()
+        var leadingActions: kotlin.collections.List<SwipeActionData> = listOf()
+        var allowsFullSwipeTrailing = true
+        var allowsFullSwipeLeading = true
+
+        if hasExplicitSwipeActions {
+            let (trailing, trailingFull) = SwipeActionsModifier.extractActions(for: content, edge: .trailing, context: context)
+            let (leading, leadingFull) = SwipeActionsModifier.extractActions(for: content, edge: .leading, context: context)
+            trailingActions = trailing
+            leadingActions = leading
+            allowsFullSwipeTrailing = trailingFull
+            allowsFullSwipeLeading = leadingFull
+        } else if isDeleteEnabled {
+            // Synthesise from onDelete (backward compat)
             let rememberedOnDelete = rememberUpdatedState({
                 if let onDelete {
                     withAnimation { onDelete(IndexSet(integer: index)) }
@@ -502,25 +574,46 @@ public final class List : View, Renderable {
                     withAnimation { (objectsBinding.wrappedValue as? RangeReplaceableCollection<Any>)?.remove(at: index) }
                 }
             })
-            let dismissState = rememberSwipeToDismissBoxState(confirmValueChange: {
-                $0 == SwipeToDismissBoxValue.EndToStart
-            }, positionalThreshold = SwipeToDismissBoxDefaults.positionalThreshold)
+            trailingActions = listOf(SwipeActionData(
+                label: "Delete",
+                iconName: "trash",
+                role: 1,
+                tint: nil,
+                action: { rememberedOnDelete.value() }
+            ))
+        }
 
-            LaunchedEffect(dismissState.currentValue) {
-                if dismissState.currentValue == SwipeToDismissBoxValue.EndToStart {
-                    rememberedOnDelete.value()
-                }
-            }
-
+        let hasAnyActions = !trailingActions.isEmpty() || !leadingActions.isEmpty()
+        if hasAnyActions {
             let itemContent: @Composable (Modifier) -> Void = {
-                SwipeToDismissBox(state: dismissState, enableDismissFromEndToStart: true, enableDismissFromStartToEnd: false, modifier: $0, backgroundContent: {
-                    let trashVector = Image.composeImageVector(named: "trash")!
-                    Box(modifier: Modifier.background(androidx.compose.ui.graphics.Color.Red).fillMaxSize(), contentAlignment: androidx.compose.ui.Alignment.CenterEnd) {
-                        Icon(imageVector: trashVector, contentDescription: "Delete", modifier = Modifier.padding(end: 24.dp), tint: androidx.compose.ui.graphics.Color.White)
-                    }
-                }, content: {
+                SwipeActionsBox(
+                    trailingActions: trailingActions,
+                    leadingActions: leadingActions,
+                    allowsFullSwipeTrailing: allowsFullSwipeTrailing,
+                    allowsFullSwipeLeading: allowsFullSwipeLeading,
+                    modifier: $0,
+                    activeSwipeKey: activeSwipeKey,
+                    onDestructiveDeleteStart: { deletedKey in
+                        isDestructiveDeleteAnimating.value = true
+                        if let dk = deletedKey as? String {
+                            deletedItemKey.value = dk
+                            deletionSurvivorKeys.value = Set(composedEditableKeys.filter { $0 != dk })
+                        } else {
+                            deletedItemKey.value = nil
+                            deletionSurvivorKeys.value = Set(composedEditableKeys)
+                        }
+                    },
+                    onDestructiveDeleteEnd: {
+                        deletionSurvivorKeys.value = Set<String>()
+                        isDestructiveDeleteAnimating.value = false
+                        deletedItemKey.value = nil
+                    },
+                    itemKey: key,
+                    isReordering: reorderableState.draggingItemKey != nil,
+                    listState: reorderableState.listState
+                ) {
                     RenderItem(content: content, level: level, context: context, styling: styling)
-                })
+                }
             }
             if isMoveEnabled {
                 RenderReorderableItem(reorderableState: reorderableState, key: key, modifier: modifier, content: itemContent)
@@ -528,8 +621,13 @@ public final class List : View, Renderable {
                 itemContent(modifier)
             }
         } else {
-            RenderReorderableItem(reorderableState: reorderableState, key: key, modifier: modifier) {
-                RenderItem(content: content, level: level, context: context, modifier: $0, styling: styling)
+            // No swipe actions — move-only or plain item
+            if isMoveEnabled {
+                RenderReorderableItem(reorderableState: reorderableState, key: key, modifier: modifier) {
+                    RenderItem(content: content, level: level, context: context, modifier: $0, styling: styling)
+                }
+            } else {
+                RenderItem(content: content, level: level, context: context, modifier: modifier, styling: styling)
             }
         }
     }
@@ -884,10 +982,6 @@ extension View {
         return self
     }
 
-    @available(*, unavailable)
-    public func swipeActions(edge: HorizontalEdge = .trailing, allowsFullSwipe: Bool = true, @ViewBuilder content: () -> any View) -> some View {
-        return self
-    }
 }
 
 #if SKIP

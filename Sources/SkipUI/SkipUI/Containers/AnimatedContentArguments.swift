@@ -4,6 +4,18 @@
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.Modifier
 
+/// Animation identity for a renderable in an eager container (VStack/HStack/ZStack).
+///
+/// Prefers `identityKey` (set by ForEach via `IdentityKeyModifier`) over explicit `.id()`
+/// (set by SwiftUI's `.id()` modifier via `TagModifier`). Returns `nil` for items with
+/// neither, which causes the container to use the non-animated rendering path.
+func animatedContentKey(for renderable: Renderable) -> Any? {
+    if let key = renderable.identityKey {
+        return key
+    }
+    return TagModifier.on(content: renderable, role: .id)?.value
+}
+
 /// Used in our containers to prevent recomposing animated content unnecessarily.
 @Stable
 struct AnimatedContentArguments: Equatable {

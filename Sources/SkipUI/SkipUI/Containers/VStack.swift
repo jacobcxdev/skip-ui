@@ -79,7 +79,7 @@ public struct VStack : View, Renderable {
             columnArrangement = Arrangement.spacedBy((spacing ?? Self.defaultSpacing).dp, alignment: androidx.compose.ui.Alignment.CenterVertically)
         }
 
-        let idMap: (Renderable) -> Any? = { TagModifier.on(content: $0, role: .id)?.value }
+        let idMap: (Renderable) -> Any? = { animatedContentKey(for: $0) }
         let ids = renderables.mapNotNull(idMap)
         let rememberedIds = remember { mutableSetOf<Any>() }
         let newIds = ids.filter { !rememberedIds.contains($0) }
