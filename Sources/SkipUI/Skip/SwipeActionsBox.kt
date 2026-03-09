@@ -105,8 +105,7 @@ private sealed class SettleAction {
 private const val ACTION_BUTTON_WIDTH_DP = 74
 private const val MAX_BUTTON_WIDTH_DP = 120
 private const val MAX_DETENT_RATIO = 0.50f
-// iOS uses 50pt/s threshold (from _swipeRecognizerEnded disassembly: 0x4049000000000000 = 50.0)
-private const val FLING_VELOCITY_THRESHOLD_DP = 50
+private const val FLING_VELOCITY_THRESHOLD = 1000f
 
 // iOS confirmation distance constants (from UISwipeOccurrence disassembly, build 23D8133)
 private const val NON_DESTRUCTIVE_RATIO = 0.525f
@@ -367,7 +366,6 @@ fun SwipeActionsBox(
                 .offset { IntOffset(visualOffset.roundToInt(), 0) }
                 .pointerInput(itemKey, layoutDirection) {
                     val actionButtonWidthPx = ACTION_BUTTON_WIDTH_DP.dp.toPx()
-                    val flingVelocityThresholdPx = FLING_VELOCITY_THRESHOLD_DP.dp.toPx()
                     val nonDestructiveMinGapPx = NON_DESTRUCTIVE_MIN_GAP_DP.dp.toPx()
                     val destructiveTrailingInsetPx = DESTRUCTIVE_TRAILING_INSET_DP.dp.toPx()
                     val destructiveLeadingInsetPx = DESTRUCTIVE_LEADING_INSET_DP.dp.toPx()
@@ -521,6 +519,7 @@ fun SwipeActionsBox(
                                 var catchUpJob: kotlinx.coroutines.Job? = null
 
                                 var dragChange: androidx.compose.ui.input.pointer.PointerInputChange? = slopChange
+                                var lastSignificantDelta = 0f
                                 while (dragChange != null && dragChange.pressed) {
                                     val delta = dragChange.positionChange().x
                                     dragChange.consume()
@@ -572,6 +571,7 @@ fun SwipeActionsBox(
                                         (rawOffset + signedAdjustment).coerceIn(0f, rowWidthPx.toFloat())
                                     }
 
+                                    if (abs(delta) > 0.5f) lastSignificantDelta = delta
                                     dragChange = awaitDragOrCancellation(dragChange.id)
                                 }
                                 // Cancel catch-up animation on release
@@ -587,34 +587,29 @@ fun SwipeActionsBox(
                                     if (isLtr) allowsFullSwipeLeading else allowsFullSwipeTrailing
                                 }
 
-                                // iOS velocity checks (from _swipeRecognizerEnded disassembly):
-                                // - 50pt/s threshold determines "high velocity" vs positional
-                                // - Fling AWAY from rest → snap to detent (NOT trigger)
-                                // - Fling TOWARD rest → return to start anchor
-                                // - Only zone C position triggers the primary action
-                                val isHighVelocity = abs(velocity) > flingVelocityThresholdPx
-                                val velocityTowardAction = (velocity * dragSign) > 0
+                                // Retreat: last significant movement was toward rest
+                                val isRetreating = lastSignificantDelta != 0f &&
+                                    (lastSignificantDelta * dragSign) < 0
+
+                                val flingAway = !isRetreating &&
+                                    (velocity * dragSign) > 0 &&
+                                    abs(velocity) > FLING_VELOCITY_THRESHOLD
+
                                 val fingerInZoneC = isFingerInZoneC(rawOffset)
 
                                 when {
                                     activeActions.isEmpty() -> SettleAction.Close
-                                    // Position past confirmation → trigger (iOS: confirmed state)
-                                    allowsFullSwipeDir && fingerInZoneC ->
+                                    // Retreating → always close
+                                    isRetreating -> SettleAction.Close
+                                    // Completion zone (finger screen position) or fling → trigger
+                                    allowsFullSwipeDir && (fingerInZoneC || flingAway) ->
                                         SettleAction.Trigger(dragSign * rowWidthPx.toFloat(), activeActions)
-                                    // High velocity away from rest → snap to detent (NOT trigger!)
-                                    isHighVelocity && velocityTowardAction ->
-                                        SettleAction.Detent(dragSign * detentPx)
-                                    // High velocity toward rest → return to start anchor
-                                    isHighVelocity -> {
-                                        if (startAbsOffset >= detentPx * 0.5f)
-                                            SettleAction.Detent(dragSign * detentPx)
-                                        else
-                                            SettleAction.Close
-                                    }
-                                    // Low velocity, past half detent → snap to detent
-                                    // (iOS: openThreshold * 0.5 from _swipeRecognizerEnded)
-                                    absRaw >= detentPx * 0.5f -> SettleAction.Detent(dragSign * detentPx)
-                                    // Below half detent → close
+                                    // At or past detent → snap to detent
+                                    absRaw >= detentPx -> SettleAction.Detent(dragSign * detentPx)
+                                    // Below detent, opened from start → snap to detent
+                                    // (handles tiny swipe from rest: 0 >= 0 = true)
+                                    absRaw >= startAbsOffset -> SettleAction.Detent(dragSign * detentPx)
+                                    // Below detent, closer to rest than start → close
                                     else -> SettleAction.Close
                                 }
                             } } catch (ce: CancellationException) {
