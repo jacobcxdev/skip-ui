@@ -87,20 +87,15 @@ public final class Table<ObjectType, ID> : View, Renderable where ObjectType: Id
         })
 
         // See explanation in List.swift
-        let forceUnanimatedItems = remember { mutableStateOf(false) }
-        if Animation.current(isAnimating: false) == nil {
-            forceUnanimatedItems.value = true
-            LaunchedEffect(System.currentTimeMillis()) {
-                delay(300)
-                forceUnanimatedItems.value = false
-            }
-        } else {
-            forceUnanimatedItems.value = false
+        let suppressPlacement = remember { mutableStateOf(true) }
+        LaunchedEffect(Unit) {
+            delay(300)
+            suppressPlacement.value = false
         }
 
         let shouldAnimateItems: @Composable () -> Bool = {
             // We disable animation to prevent filtered items from animating when they return
-            !forceUnanimatedItems.value && EnvironmentValues.shared._searchableState?.isSearching.value != true
+            !suppressPlacement.value && EnvironmentValues.shared._searchableState?.isSearching.value != true
         }
 
         let key: (Int) -> String = { composeBundleNormalizedKey(for: data[$0].id) }

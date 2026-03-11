@@ -322,6 +322,8 @@ extension EnvironmentValues {
             return EnvironmentSupport(builtinValue: truncationMode?.rawValue)
         case "verticalSizeClass":
             return EnvironmentSupport(builtinValue: verticalSizeClass?.rawValue)
+        case "editMode":
+            return EnvironmentSupport(builtinValue: _editMode?.wrappedValue.isEditing == true)
         default:
             return nil
         }
@@ -386,6 +388,10 @@ extension EnvironmentValues {
             return true
         case "verticalSizeClass":
             return false
+        case "editMode":
+            let isEditing = value?.builtinValue as? Bool == true
+            set_editMode(isEditing ? Binding.constant(EditMode.active) : Binding.constant(EditMode.inactive))
+            return true
         default:
             return false
         }
@@ -721,6 +727,11 @@ extension EnvironmentValues {
     var _listSectionFooterStyle: ListStyle? {
         get { builtinValue(key: "_listSectionFooterStyle", defaultValue: { nil }) as! ListStyle? }
         set { setBuiltinValue(key: "_listSectionFooterStyle", value: newValue, defaultValue: { nil }) }
+    }
+
+    var _editMode: Binding<EditMode>? {
+        get { builtinValue(key: "_editMode", defaultValue: { nil }) as! Binding<EditMode>? }
+        set { setBuiltinValue(key: "_editMode", value: newValue, defaultValue: { nil }) }
     }
 
     var _listStyle: ListStyle? {
@@ -2016,7 +2027,10 @@ extension EnvironmentValues {
     /// taps the Edit button, and disables editing mode when the user taps Done.
     @available(macOS, unavailable)
     @available(watchOS, unavailable)
-    public var editMode: Binding<EditMode>? { get { fatalError() } }
+    public var editMode: Binding<EditMode>? {
+        get { _editMode }
+        set { _editMode = newValue }
+    }
 }
 
 @available(iOS 15.0, macOS 10.15, watchOS 9.0, *)

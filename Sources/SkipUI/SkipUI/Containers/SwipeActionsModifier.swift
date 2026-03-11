@@ -63,6 +63,7 @@ final class SwipeActionsModifier: RenderModifier {
                 if let button = r.strip() as? Button {
                     var labelText: String? = nil
                     var iconName: String? = nil
+                    var iconView: Image? = nil
                     let labelViews = button.label.Evaluate(context: context, options: 0)
                     for view in labelViews {
                         let stripped = view.strip()
@@ -72,11 +73,13 @@ final class SwipeActionsModifier: RenderModifier {
                             let imageViews = label.image.Evaluate(context: context, options: 0)
                             if let img = imageViews.firstOrNull()?.strip() as? Image, case .system(let systemName) = img.image {
                                 iconName = systemName
+                                iconView = img
                             }
                         } else if let text = stripped as? Text {
                             labelText = text.localizedTextString()
                         } else if let img = stripped as? Image, case .system(let systemName) = img.image {
                             iconName = systemName
+                            iconView = img
                         }
                     }
 
@@ -102,6 +105,7 @@ final class SwipeActionsModifier: RenderModifier {
                     let actionData = SwipeActionData(
                         label: labelText,
                         iconName: iconName,
+                        iconView: iconView,
                         role: button.role?.rawValue,
                         tint: tintColor,
                         action: { button.action() }
@@ -124,4 +128,21 @@ final class SwipeActionsModifier: RenderModifier {
     }
 }
 #endif
+
+// Bridge method for Fuse mode — called from skip-fuse-ui
+extension View {
+    // SKIP @bridge
+    public func swipeActions(bridgedEdge: Int, allowsFullSwipe: Bool, bridgedContent: any View) -> any View {
+        #if SKIP
+        return ModifiedContent(content: self, modifier: SwipeActionsModifier(
+            edge: HorizontalEdge(rawValue: bridgedEdge) ?? .trailing,
+            allowsFullSwipe: allowsFullSwipe,
+            content: ComposeBuilder(view: bridgedContent)
+        ))
+        #else
+        return self
+        #endif
+    }
+}
+
 #endif

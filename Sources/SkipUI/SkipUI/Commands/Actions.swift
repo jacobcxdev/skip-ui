@@ -130,6 +130,21 @@ public struct RefreshAction {
     }
 }
 
+// SKIP @bridge
+public struct ListSelectionProxy {
+    // SKIP @bridge
+    public let isSelected: (String) -> Bool
+    // SKIP @bridge
+    public let toggleSelection: (String, Any) -> Void
+
+    // SKIP @bridge
+    public init(isSelected: @escaping (String) -> Bool,
+                toggleSelection: @escaping (String, Any) -> Void) {
+        self.isSelected = isSelected
+        self.toggleSelection = toggleSelection
+    }
+}
+
 /*
 /// An action that presents a window.
 ///

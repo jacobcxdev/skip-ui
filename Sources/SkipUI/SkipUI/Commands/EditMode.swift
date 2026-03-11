@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only WITH LGPL-3.0-linking-exception
 #if !SKIP_BRIDGE
 
+@available(macOS, unavailable)
+@available(watchOS, unavailable)
 public enum EditMode : Hashable {
     case inactive
     case transient

@@ -37,11 +37,15 @@ func composeBundleNormalizedKey(for value: Any?) -> String {
         return "nil"
     }
     let normalized = normalizeKey(value)
-    let result: String
+    var result: String
     if let str = normalized as? String {
         result = str
     } else {
         result = String(describing: normalized)
+    }
+    // Strip Optional(...) wrapping that can occur when AnyHashable? values cross the JNI bridge
+    while result.hasPrefix("Optional(") && result.hasSuffix(")") {
+        result = String(result.dropFirst(9).dropLast(1))
     }
     android.util.Log.d("ComposeIdentity", "composeBundleNormalizedKey: value=\(value) type=\(type(of: value)) → key=\(result)")
     return result

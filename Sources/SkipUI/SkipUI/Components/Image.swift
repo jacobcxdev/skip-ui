@@ -205,9 +205,9 @@ public struct Image : View, Renderable, Equatable {
                         path(
                             fill: SolidColor(tintColor),
                             fillAlpha: Float(1.0),
-                            stroke: SolidColor(tintColor),
+                            stroke: nil,
                             strokeAlpha: Float(1.0),
-                            strokeLineWidth: Float(1.0),
+                            strokeLineWidth: Float(0.0),
                             strokeLineCap: StrokeCap.Butt,
                             strokeLineJoin: StrokeJoin.Bevel,
                             strokeLineMiter: Float(1.0),
@@ -218,7 +218,7 @@ public struct Image : View, Renderable, Equatable {
                                     let bounds = pathParser.toPath().getBounds()
                                     let pathData = pathParser.toNodes()
                                     //logger.debug("parsed path bounds=\(bounds) nodes=\(pathData)")
-                                    addPath(pathData, fill: SolidColor(tintColor), stroke: SolidColor(tintColor))
+                                    addPath(pathData, fill: SolidColor(tintColor), stroke: nil)
                                 }
                             }
                         )
@@ -362,16 +362,24 @@ public struct Image : View, Renderable, Equatable {
         // Apply symbol variants from the environment
         let symbolVariants = EnvironmentValues.shared._symbolVariants
         let effectiveName = symbolVariants.applied(to: systemName)
+        let hasVariant = effectiveName != systemName
 
         // we first check to see if there is a bundled symbol with the name in any of the asset catalogs, in which case we will use that symbol
         // note that we can only use the `main` (i.e., top-level) bundle to look up image resources, since Image(systemName:) does not accept a bundle
         if let symbolResourceURL = rememberCachedAsset(contentsCache, AssetKey(name: effectiveName)) { _ in symbolResourceURL(name: effectiveName, bundle: Bundle.main) } {
             RenderSymbolImage(name: effectiveName, url: symbolResourceURL, label: nil, aspectRatio: aspectRatio, contentMode: contentMode, context: context)
             return
-       }
+        }
 
-        // fall back to default symbol names
-        guard let image = Self.composeImageVector(named: effectiveName) else {
+        // If variant changed the name, try the original name for bundled assets
+        if hasVariant, let symbolResourceURL = rememberCachedAsset(contentsCache, AssetKey(name: systemName)) { _ in symbolResourceURL(name: systemName, bundle: Bundle.main) } {
+            RenderSymbolImage(name: systemName, url: symbolResourceURL, label: nil, aspectRatio: aspectRatio, contentMode: contentMode, context: context)
+            return
+        }
+
+        // Fall back to Material icon mapping — try variant name first, then original
+        let image = Self.composeImageVector(named: effectiveName) ?? (hasVariant ? Self.composeImageVector(named: systemName) : nil)
+        guard let image else {
             logger.warning("Unable to find system image named: \(effectiveName)")
             Icon(imageVector: Icons.Default.Warning, contentDescription: "missing icon")
             return
@@ -474,6 +482,7 @@ public struct Image : View, Renderable, Equatable {
         // #148 Icons.Outlined.Star is not actually outlined!
         // case "star": return "Icons.Outlined.Star" //􀋃
         case "hand.thumbsup": return "Icons.Outlined.ThumbUp" //􀉿
+        case "circle": return "Icons.Outlined.Circle"
         case "exclamationmark.triangle": return "Icons.Outlined.Warning" //􀇿
 
         case "person.crop.square.fill": return "Icons.Filled.AccountBox" //􀉺
@@ -521,6 +530,7 @@ public struct Image : View, Renderable, Equatable {
         case "Icons.Outlined.Call": return Icons.Outlined.Call
         case "Icons.Outlined.CheckCircle": return Icons.Outlined.CheckCircle
         case "Icons.Outlined.Check": return Icons.Outlined.Check
+        case "Icons.Outlined.Circle": return Icons.Outlined.Circle
         case "Icons.Outlined.Clear": return Icons.Outlined.Clear
         case "Icons.Outlined.Close": return Icons.Outlined.Close
         case "Icons.Outlined.Create": return Icons.Outlined.Create

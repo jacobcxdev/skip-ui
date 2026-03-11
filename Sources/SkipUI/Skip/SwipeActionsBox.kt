@@ -4,9 +4,9 @@ package skip.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring.DampingRatioNoBouncy
-import androidx.compose.animation.core.Spring.StiffnessHigh
 import androidx.compose.animation.core.Spring.StiffnessLow
 import androidx.compose.animation.core.Spring.StiffnessMedium
+import androidx.compose.animation.core.Spring.StiffnessMediumLow
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -18,12 +18,14 @@ import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
@@ -43,6 +45,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
@@ -61,6 +64,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
@@ -77,6 +81,7 @@ import kotlin.math.roundToInt
 data class SwipeActionData(
     val label: String?,
     val iconName: String?,
+    val iconView: View? = null, // Image view for composable rendering (asset catalog + Material Icons)
     val role: Int?,       // ButtonRole raw value: 1=destructive, 2=cancel, 3=confirm, 4=close
     val tint: Any?,       // skip.ui.Color? — resolved to Compose color at render time
     val action: () -> Unit
@@ -113,8 +118,22 @@ private const val NON_DESTRUCTIVE_MIN_GAP_DP = 20
 private const val DESTRUCTIVE_TRAILING_INSET_DP = 64
 private const val DESTRUCTIVE_LEADING_INSET_DP = 29
 
+/**
+ * Swipe action layout style.
+ *
+ * [IOS18]: Equal-split actions, inner-edge labels with card-from-deck reveal, no fade/scale.
+ * [IOS26]: Progressive disclosure, centred labels with fade/scale, BiasAlignment slide on zone C.
+ *          WIP — retained for future support as a distinct skip-ui style.
+ */
+internal enum class SwipeActionLayoutStyle { IOS18, IOS26 }
+private val SWIPE_LAYOUT_STYLE = SwipeActionLayoutStyle.IOS18
+
+// Empirically tuned to approximate iOS swipe-action animation feel.
 private val SETTLE_SPRING = spring<Float>(dampingRatio = DampingRatioNoBouncy, stiffness = StiffnessLow)
-private val SNAP_SPRING = spring<Float>(dampingRatio = DampingRatioNoBouncy, stiffness = StiffnessHigh)
+private val SNAP_SPRING = when (SWIPE_LAYOUT_STYLE) {
+    SwipeActionLayoutStyle.IOS18 -> spring<Float>(dampingRatio = DampingRatioNoBouncy, stiffness = StiffnessMediumLow)
+    SwipeActionLayoutStyle.IOS26 -> spring<Float>(dampingRatio = DampingRatioNoBouncy, stiffness = StiffnessMedium)
+}
 internal val COLLAPSE_SPRING = spring<Float>(dampingRatio = DampingRatioNoBouncy, stiffness = StiffnessMedium)
 
 /**
@@ -150,16 +169,27 @@ private fun completionThresholdPx(
  * Wraps content with a height-growth animation from 0 to full over [durationMillis] ms.
  * Used for newly inserted items during a destructive delete so that survivors
  * with tween(0) placement track the growth frame-by-frame.
+ *
+ * When [animateOnEnter] is false the wrapper is inert (fraction starts at 1f,
+ * no animation runs). This keeps [content] at a stable call site in the
+ * composition tree, preventing Compose from disposing and remounting the
+ * subtree when a conditional wrapper is added or removed.
+ *
+ * Note: [animateOnEnter] is sampled only on first composition of this
+ * wrapper instance. Flipping it from false→true after mount has no effect.
  */
 @Composable
 internal fun HeightGrowthBox(
+    animateOnEnter: Boolean = true,
     durationMillis: Int = 350,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    val fraction = remember { Animatable(0f) }
+    val fraction = remember { Animatable(if (animateOnEnter) 0f else 1f) }
     LaunchedEffect(Unit) {
-        fraction.animateTo(1f, androidx.compose.animation.core.tween(durationMillis = durationMillis))
+        if (animateOnEnter) {
+            fraction.animateTo(1f, androidx.compose.animation.core.tween(durationMillis = durationMillis))
+        }
     }
     Box(
         modifier = modifier
@@ -226,9 +256,12 @@ fun SwipeActionsBox(
     }
 
     // Coordination: single-revealed-row
+    // Use collectLatest so that if the close animation is cancelled (e.g. the user
+    // starts dragging this row while it's closing), the CancellationException only
+    // cancels the current block — the flow stays alive for future emissions.
     LaunchedEffect(itemKey) {
         snapshotFlow { activeSwipeKey.value }
-            .collect { activeKey ->
+            .collectLatest { activeKey ->
                 if (activeKey != null && activeKey != itemKey && !isActioning && !isDragging) {
                     offsetX.animateTo(0f, SETTLE_SPRING)
                 }
@@ -337,15 +370,16 @@ fun SwipeActionsBox(
                                         onDestructiveDeleteEnd()
                                     }
                                 } else {
-                                    // Non-destructive: fire action immediately, then reset
+                                    // Non-destructive: close panel and fire action in parallel
+                                    animJob.cancel()
+                                    val closeJob = launch { offsetX.animateTo(0f, SETTLE_SPRING) }
                                     try {
                                         action.action()
                                     } catch (e: Exception) {
                                         if (e is CancellationException) throw e
                                     }
-                                    animJob.join()
+                                    closeJob.join()
                                     isActioning = false
-                                    offsetX.snapTo(0f)
                                     if (activeSwipeKey.value == itemKey) activeSwipeKey.value = null
                                 }
                             } catch (e: CancellationException) {
@@ -386,6 +420,10 @@ fun SwipeActionsBox(
 
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 isActioning = false
+                                // Signal other revealed rows to close on any touch to this row,
+                                // even before slop is confirmed. Without this, a diagonal swipe
+                                // that fails slop detection leaves sibling rows open.
+                                activeSwipeKey.value = itemKey
 
                                 val hasTrailing = trailingActions.isNotEmpty()
                                 val hasLeading = leadingActions.isNotEmpty()
@@ -428,13 +466,14 @@ fun SwipeActionsBox(
                                 }
 
                                 if (slopChange == null || !dragStarted) {
-                                    if (isRevealed) return@awaitPointerEventScope SettleAction.Close
+                                    if (isRevealed) {
+                                        return@awaitPointerEventScope SettleAction.Close
+                                    }
                                     return@awaitPointerEventScope SettleAction.None
                                 }
 
                                 // Drag phase
                                 val velocityTracker = VelocityTracker()
-                                activeSwipeKey.value = itemKey
                                 val dragSign = if (offsetX.value != 0f) {
                                     if (offsetX.value < 0f) -1f else 1f
                                 } else {
@@ -597,7 +636,7 @@ fun SwipeActionsBox(
 
                                 val fingerInZoneC = isFingerInZoneC(rawOffset)
 
-                                when {
+                                val settleResult = when {
                                     activeActions.isEmpty() -> SettleAction.Close
                                     // Retreating → always close
                                     isRetreating -> SettleAction.Close
@@ -612,6 +651,7 @@ fun SwipeActionsBox(
                                     // Below detent, closer to rest than start → close
                                     else -> SettleAction.Close
                                 }
+                                settleResult
                             } } catch (ce: CancellationException) {
                                 throw ce
                             } catch (_: Exception) {
@@ -626,7 +666,12 @@ fun SwipeActionsBox(
                                         offsetX.snapTo(dragOffsetX)
                                         isDragging = false
                                         offsetX.animateTo(0f, SETTLE_SPRING)
-                                        if (activeSwipeKey.value == itemKey) activeSwipeKey.value = null
+                                        // Don't clear activeSwipeKey here — if another row's
+                                        // collectLatest close animation is still in flight, the
+                                        // null emission would cancel it via collectLatest, leaving
+                                        // that row stuck partially revealed. The next touch event
+                                        // unconditionally sets activeSwipeKey, so leaving the stale
+                                        // key is harmless.
                                     } finally {
                                         isSettling = false
                                     }
@@ -670,15 +715,16 @@ fun SwipeActionsBox(
                                                 onDestructiveDeleteEnd()
                                             }
                                         } else {
-                                            // Non-destructive: fire action immediately, then reset
+                                            // Non-destructive: close panel and fire action in parallel
+                                            animJob.cancel()
+                                            val closeJob = launch { offsetX.animateTo(0f, SETTLE_SPRING) }
                                             try {
                                                 firstAction.action()
                                             } catch (e: Exception) {
                                                 if (e is CancellationException) throw e
                                             }
-                                            animJob.join()
+                                            closeJob.join()
                                             isActioning = false
-                                            offsetX.snapTo(0f)
                                             if (activeSwipeKey.value == itemKey) activeSwipeKey.value = null
                                         }
                                     } catch (e: CancellationException) {
@@ -703,13 +749,19 @@ fun SwipeActionsBox(
 /**
  * Background layer showing action buttons when row is swiped.
  *
- * Unified layout: a single weighted Row handles both normal and completion
- * states. Animated properties drive the transition rather than binary switches:
+ * Layout varies by [SWIPE_LAYOUT_STYLE]:
  *
- * - labelOpacity: proportional fade-in from closed (0) to detent (1)
- * - completionProgress: 0→1 spring animation when entering zone (c)
- * - BiasAlignment: smooth label slide from centre to row-side edge
- * - Weight: first action expands, others shrink during completion
+ * **iOS 18** — progressive disclosure with card-from-deck reveal: labels slide
+ * out from behind the adjacent outer action (outer-edge bias while container
+ * < 74dp), then pin to the inner edge once fully revealed (inner-edge bias
+ * when container ≥ 74dp). No fade/scale. The bias flips at exactly 74dp
+ * where both biases produce identical positioning, so there is no discontinuity.
+ *
+ * **iOS 26** — progressive disclosure with centred labels, fade/scale-in, and
+ * BiasAlignment slide from centre to edge on zone C entry.
+ *
+ * Both styles share the same progressive-disclosure weight allocation and
+ * use completionProgress to expand the edge action in zone C.
  */
 @Composable
 private fun BoxScope.ActionsBackground(
@@ -735,21 +787,14 @@ private fun BoxScope.ActionsBackground(
         label = "completionProgress"
     )
 
-    // Detent width for label fade-in calculation
     val density = androidx.compose.ui.platform.LocalDensity.current
     val actionButtonWidthPx = with(density) { ACTION_BUTTON_WIDTH_DP.dp.toPx() }
-    val detentPx = (actionButtonWidthPx * actions.size)
-        .coerceAtMost(rowWidthPx * MAX_DETENT_RATIO)
 
-    // Label opacity: proportional fade-in from closed to detent
-    val labelOpacity = if (detentPx > 0f) (revealPx / detentPx).coerceIn(0f, 1f) else 1f
-
-    // Row-side bias direction: the edge physically closest to the sliding
-    // row content. BiasAlignment respects layout direction — adjust for RTL.
-    val rowSideBias = run {
+    // iOS 26: RTL-aware bias direction for the edge closest to the sliding row content.
+    val rowSideBias = if (SWIPE_LAYOUT_STYLE == SwipeActionLayoutStyle.IOS26) {
         val ltrBias = if (isTrailingVisual) -1f else 1f
         if (layoutDirection == LayoutDirection.Ltr) ltrBias else -ltrBias
-    }
+    } else 0f
 
     Box(
         modifier = Modifier.matchParentSize(),
@@ -771,55 +816,116 @@ private fun BoxScope.ActionsBackground(
                 .width(revealDp),
             horizontalArrangement = Arrangement.Start
         ) {
-            for ((index, action) in actions.withIndex()) {
+            // For trailing (right side), reverse display so the first declared
+            // action (outermost on iOS) renders closest to the screen edge.
+            val displayActions = if (isTrailingVisual) actions.asReversed() else actions
+            val actionsCount = displayActions.size
+            for ((displayIndex, action) in displayActions.withIndex()) {
+                val originalIndex = if (isTrailingVisual) actions.lastIndex - displayIndex else displayIndex
                 val bgColor = action.resolveColor()
-                val isFirst = index == 0
+                val isEdgeAction = originalIndex == 0
 
-                // Weight: first action expands in completion zone, others shrink
-                val buttonWeight = if (isFirst) {
-                    1f + completionProgress * (actions.size - 1).toFloat()
-                } else {
-                    (1f - completionProgress).coerceAtLeast(0.01f)
+                // iOS 18: equal width split; iOS 26: progressive disclosure.
+                val distFromOuter = if (isTrailingVisual) (actionsCount - 1 - displayIndex) else displayIndex
+                val progressiveRevealPx = (revealPx - distFromOuter * actionButtonWidthPx).coerceIn(0f, actionButtonWidthPx)
+                val normalWeight = when (SWIPE_LAYOUT_STYLE) {
+                    SwipeActionLayoutStyle.IOS18 -> (revealPx / actionsCount).coerceAtLeast(0.01f)
+                    SwipeActionLayoutStyle.IOS26 -> progressiveRevealPx.coerceAtLeast(0.01f)
                 }
+                val completionWeight = if (isEdgeAction) revealPx.coerceAtLeast(0.01f) else 0.01f
+                val buttonWeight = normalWeight + completionProgress * (completionWeight - normalWeight)
 
-                // Opacity: all labels fade in with swipe; non-first also fade out in completion
-                val actionAlpha = if (isFirst) labelOpacity else labelOpacity * (1f - completionProgress)
-
-                // Alignment: first action label slides from centre to row-side edge
-                val horizontalBias = if (isFirst) completionProgress * rowSideBias else 0f
-
-                Box(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxHeight()
                         .weight(buttonWeight)
                         .background(bgColor)
                         .clipToBounds()
-                        .clickable { onActionTap(index) },
-                    contentAlignment = BiasAlignment(horizontalBias = horizontalBias, verticalBias = 0f)
+                        .clickable { onActionTap(originalIndex) }
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                        modifier = Modifier
-                            .requiredWidth(ACTION_BUTTON_WIDTH_DP.dp)
-                            .scale(labelOpacity)
-                            .padding(horizontal = if (isFirst) 16.dp * completionProgress else 0.dp)
-                    ) {
-                        val iconVector = action.iconName?.let { Image.composeImageVector(named = it) as? ImageVector }
-                        if (iconVector != null) {
-                            Icon(
-                                imageVector = iconVector,
-                                contentDescription = action.label,
-                                tint = Color.White.copy(alpha = actionAlpha)
-                            )
+                    val actionDisclosure = (progressiveRevealPx / actionButtonWidthPx).coerceIn(0f, 1f)
+
+                    // --- Style-dependent label presentation ---
+                    val contentBias: Float
+                    val labelAlpha: Float
+                    val labelScale: Float
+                    val labelEdgePadding: Float
+                    val innerEdgeOffset: androidx.compose.ui.unit.Dp
+
+                    when (SWIPE_LAYOUT_STYLE) {
+                        SwipeActionLayoutStyle.IOS18 -> {
+                            // requiredWidth(74dp) auto-centres content when the action
+                            // is narrower than 74dp. Counteract with an offset so the
+                            // content centre is always at 37dp from the inner edge.
+                            val halfButton = ACTION_BUTTON_WIDTH_DP.dp / 2
+                            innerEdgeOffset = if (isTrailingVisual) halfButton - maxWidth / 2 else maxWidth / 2 - halfButton
+                            contentBias = 0f
+                            labelAlpha = 1f
+                            labelScale = 1f
+                            labelEdgePadding = 0f
                         }
-                        if (action.label != null) {
-                            Text(
-                                text = action.label,
-                                color = Color.White.copy(alpha = actionAlpha),
-                                fontSize = androidx.compose.ui.unit.TextUnit(12f, androidx.compose.ui.unit.TextUnitType.Sp),
-                                maxLines = 1
-                            )
+                        SwipeActionLayoutStyle.IOS26 -> {
+                            innerEdgeOffset = 0.dp
+                            contentBias = if (isEdgeAction) completionProgress * rowSideBias else 0f
+                            labelAlpha = if (isEdgeAction) actionDisclosure else actionDisclosure * (1f - completionProgress)
+                            labelScale = actionDisclosure
+                            labelEdgePadding = if (isEdgeAction) 16f * completionProgress else 0f
+                        }
+                    }
+
+                    val layoutMode = when {
+                        maxHeight >= 90.dp -> 0
+                        maxHeight >= 50.dp -> 1
+                        else -> 2
+                    }
+                    val showLabel = layoutMode == 0
+                    val iconScale = if (layoutMode == 2) 0.8f else 1.0f
+
+                    // Content positioned via style-dependent bias; layoutMode uses maxHeight.
+                    Box(
+                        modifier = Modifier.matchParentSize(),
+                        contentAlignment = BiasAlignment(horizontalBias = contentBias, verticalBias = 0f)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            // iOS dynamic button: 4pt explicit gap between icon button frame and title label
+                            verticalArrangement = if (showLabel) Arrangement.spacedBy(4.dp, Alignment.CenterVertically) else Arrangement.Center,
+                            modifier = Modifier
+                                .requiredWidth(ACTION_BUTTON_WIDTH_DP.dp)
+                                .fillMaxHeight()
+                                .offset(x = innerEdgeOffset)
+                                // iOS layoutSubviews: 8pt total vertical margin (boundsH - 8.0 centered)
+                                .padding(vertical = 4.dp)
+                                .scale(labelScale)
+                                .padding(horizontal = labelEdgePadding.dp)
+                        ) {
+                            // iOS swipeActions modifier applies .symbolVariant(.fill) to its content,
+                            // causing SF Symbols to render with filled appearance. We set the same
+                            // environment value so Image's RenderSystem picks it up automatically.
+                            if (action.iconView != null) {
+                                val white = skip.ui.Color(colorImpl = { Color.White.copy(alpha = labelAlpha) })
+                                Box(modifier = Modifier.requiredSize(22.dp).scale(iconScale)) {
+                                    EnvironmentValues.shared.setValues({ env ->
+                                        env.set_foregroundStyle(white)
+                                        env.setfont(Font.system(size = 15.0))
+                                        env.set_symbolVariants(SymbolVariants.fill)
+                                        ComposeResult.ok
+                                    }) {
+                                        action.iconView.Compose(context = ComposeContext())
+                                    }
+                                }
+                            }
+                            if (showLabel && action.label != null) {
+                                Text(
+                                    text = action.label,
+                                    color = Color.White.copy(alpha = labelAlpha),
+                                    // iOS dynamic button: footnote font (≈13sp), UIFontWeightMedium,
+                                    // capped at UICTContentSizeCategoryXL
+                                    fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp),
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1
+                                )
+                            }
                         }
                     }
                 }
