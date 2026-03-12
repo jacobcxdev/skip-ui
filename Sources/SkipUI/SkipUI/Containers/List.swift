@@ -3,8 +3,17 @@
 #if !SKIP_BRIDGE
 import Foundation
 #if SKIP
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -580,14 +589,67 @@ public final class List : View, Renderable {
             ))
         }
 
-        // Edit mode: show selection/delete circle button and/or drag handle instead of swipe actions.
-        if isEditing && (isDeleteEnabled || hasMoveCap || hasListSelectionCap) {
+        // ── Edit-mode transition infrastructure ──
+        // All transition state lives OUTSIDE the `if showingEditChrome` guard so it persists
+        // across edit-mode cycles. MutableTransitionState is initialised with `false` so that
+        // enter animations always run (false→true transition) rather than starting at the
+        // target state and producing no animation on re-entry after the block was disposed.
+        let hasLeadingControl = hasListSelectionCap || isDeleteEnabled
+        let hasTrailingHandle = hasMoveCap
+        let wantsEditChrome = isEditing && (isDeleteEnabled || hasMoveCap || hasListSelectionCap)
+        let editLeadingTransState = remember { MutableTransitionState(false) }
+        editLeadingTransState.targetState = wantsEditChrome && hasLeadingControl
+        let editTrailingTransState = remember { MutableTransitionState(false) }
+        editTrailingTransState.targetState = wantsEditChrome && hasTrailingHandle
+        // Capture animation intent when wantsEditChrome changes (true iff inside a withAnimation block).
+        let animateEditTransition = remember { mutableStateOf(false) }
+        let prevWantsEditChrome = remember { mutableStateOf(false) }
+        if prevWantsEditChrome.value != wantsEditChrome {
+            animateEditTransition.value = Animation.isInWithAnimation
+            prevWantsEditChrome.value = wantsEditChrome
+        }
+        // Detect nil-toggle selection pattern: when hasListSelectionCap goes false→true
+        // simultaneously with entering edit mode, this matches iOS List(selection: nil → binding)
+        // structural reconfiguration which does NOT animate selection circles on enter.
+        // When selection was already bound (always-bound pattern), leading controls animate.
+        let prevHasListSelectionCap = remember { mutableStateOf(hasListSelectionCap) }
+        let selectionWasAlreadyBound = prevHasListSelectionCap.value
+        SideEffect { prevHasListSelectionCap.value = hasListSelectionCap }
+        // Per-control animation flags
+        let animateLeadingEnter = animateEditTransition.value && selectionWasAlreadyBound
+        let animateLeadingExit = animateEditTransition.value
+        let animateTrailingEnter = animateEditTransition.value
+        let animateTrailingExit = animateEditTransition.value
+        let editAnimDuration = 300
+        // Animated content padding: as edit controls expand/shrink, content padding inversely
+        // adjusts to match the normal rendering path's horizontalItemInset, preventing a visible
+        // jump at the edit→normal rendering handoff.
+        let normalStartPad = (Self.horizontalItemInset + Double(level) * Self.levelInset).dp
+        let editLeadingPad = animateDpAsState(
+            targetValue: (wantsEditChrome && hasLeadingControl) ? 0.dp : normalStartPad,
+            animationSpec: (wantsEditChrome ? animateLeadingEnter : animateLeadingExit) ? tween(durationMillis: editAnimDuration) : snap()
+        )
+        let editTrailingPad = animateDpAsState(
+            targetValue: (wantsEditChrome && hasTrailingHandle) ? 0.dp : Self.horizontalItemInset.dp,
+            animationSpec: (wantsEditChrome ? animateTrailingEnter : animateTrailingExit) ? tween(durationMillis: editAnimDuration) : snap()
+        )
+        // Freeze whether we were showing a selection circle (vs delete circle) so content
+        // remains stable during exit animation even when the selection binding goes nil.
+        let wasShowingSelectionCircle = remember { mutableStateOf(false) }
+        if wantsEditChrome {
+            wasShowingSelectionCircle.value = bridgedSelection != nil
+        }
+        let showingEditChrome = wantsEditChrome
+            || !editLeadingTransState.isIdle
+            || !editTrailingTransState.isIdle
+        if showingEditChrome {
             // Compose-side selection state for reactivity (JNI closures aren't observable by Compose).
-            // Read external truth once per recomposition; reuse for both init and sync.
+            // Read external truth once per recomposition; freeze during exit (wantsEditChrome=false)
+            // to prevent the selection circle from flipping to "unselected" during the fade-out.
             let externalSelected = listSelection?.isSelected(key) == true
             let selectedState: MutableState<Bool> = remember(key) { mutableStateOf(externalSelected) }
             SideEffect {
-                if selectedState.value != externalSelected {
+                if wantsEditChrome && selectedState.value != externalSelected {
                     selectedState.value = externalSelected
                 }
             }
@@ -601,33 +663,41 @@ public final class List : View, Renderable {
             let editListItemModifier = ListItemModifier.combined(for: editItemRenderable)
             let editCustomBackground = editListItemModifier?.background
             let editRowBgColor = BackgroundColor(styling: styling.withStyle(ListStyle.plain), isItem: true)
-            let hasLeadingControl = hasListSelectionCap || isDeleteEnabled
-            let hasTrailingHandle = hasMoveCap
-            // Content modifier for edit mode: vertical padding + min height only.
-            // Horizontal padding is provided by the 44dp edit control boxes (10dp each side of 24dp icon).
-            let editContentModifier = Modifier.padding(vertical: Self.verticalItemInset.dp).fillMaxWidth().requiredHeightIn(min: Self.minimumItemHeight.dp)
+            // Content modifier with animated horizontal padding (see editLeadingPad / editTrailingPad).
+            let editContentModifier = Modifier.padding(start: editLeadingPad.value, end: editTrailingPad.value, top: Self.verticalItemInset.dp, bottom: Self.verticalItemInset.dp).fillMaxWidth().requiredHeightIn(min: Self.minimumItemHeight.dp)
             let editRow: @Composable (Modifier) -> Void = { innerModifier in
-                // Highlight selected rows with a subtle accent tint, matching iOS
+                // Guards use MutableTransitionState (currentState||targetState) so the
+                // AnimatedVisibility stays composed during exit animation.
+                let showLeadingControl = editLeadingTransState.currentState || editLeadingTransState.targetState
+                let showTrailingHandle = editTrailingTransState.currentState || editTrailingTransState.targetState
+                // Highlight selected rows with a subtle accent tint, matching iOS.
+                // Clear immediately when exiting edit mode (before animation completes).
                 var columnModifier = innerModifier.fillMaxWidth()
-                if listSelection != nil && selectedState.value {
+                if wantsEditChrome && wasShowingSelectionCircle.value && selectedState.value {
                     columnModifier = columnModifier.background(Color.accentColor.colorImpl().copy(alpha: Float(0.15)))
                 }
                 Column(modifier: columnModifier) {
                     Row(modifier: Modifier.fillMaxWidth(), verticalAlignment: androidx.compose.ui.Alignment.CenterVertically) {
                         // Leading control: selection circle or delete circle
-                        if hasLeadingControl {
-                            if let listSelection {
-                                let selected = selectedState.value
-                                Box(modifier: Modifier.size(44.dp).clickable(onClick: doToggle), contentAlignment: androidx.compose.ui.Alignment.Center) {
-                                    if selected {
-                                        Icon(imageVector: Icons.Filled.CheckCircle, contentDescription: "Selected", modifier: Modifier.size(24.dp), tint: Color.accentColor.colorImpl())
-                                    } else {
-                                        Icon(imageVector: Icons.Outlined.Circle, contentDescription: "Unselected", modifier: Modifier.size(24.dp), tint: Color.secondary.colorImpl())
+                        if showLeadingControl {
+                            AnimatedVisibility(
+                                visibleState: editLeadingTransState,
+                                enter: animateLeadingEnter ? expandHorizontally(animationSpec: tween(durationMillis: editAnimDuration), expandFrom: androidx.compose.ui.Alignment.Start) + fadeIn(animationSpec: tween(durationMillis: editAnimDuration)) : EnterTransition.None,
+                                exit: animateLeadingExit ? shrinkHorizontally(animationSpec: tween(durationMillis: editAnimDuration), shrinkTowards: androidx.compose.ui.Alignment.Start) + fadeOut(animationSpec: tween(durationMillis: editAnimDuration)) : ExitTransition.None
+                            ) {
+                                if wasShowingSelectionCircle.value {
+                                    let selected = selectedState.value
+                                    Box(modifier: Modifier.size(44.dp).clickable(enabled: wantsEditChrome, onClick: doToggle), contentAlignment: androidx.compose.ui.Alignment.Center) {
+                                        if selected {
+                                            Icon(imageVector: Icons.Filled.CheckCircle, contentDescription: "Selected", modifier: Modifier.size(24.dp), tint: Color.accentColor.colorImpl())
+                                        } else {
+                                            Icon(imageVector: Icons.Outlined.Circle, contentDescription: "Unselected", modifier: Modifier.size(24.dp), tint: Color.secondary.colorImpl())
+                                        }
                                     }
-                                }
-                            } else if isDeleteEnabled {
-                                Box(modifier: Modifier.size(44.dp).clickable(onClick: { rememberedDeleteAction.value() }), contentAlignment: androidx.compose.ui.Alignment.Center) {
-                                    Icon(imageVector: Icons.Filled.RemoveCircle, contentDescription: "Delete", modifier: Modifier.size(24.dp), tint: Color.red.colorImpl())
+                                } else if isDeleteEnabled {
+                                    Box(modifier: Modifier.size(44.dp).clickable(enabled: wantsEditChrome, onClick: { rememberedDeleteAction.value() }), contentAlignment: androidx.compose.ui.Alignment.Center) {
+                                        Icon(imageVector: Icons.Filled.RemoveCircle, contentDescription: "Delete", modifier: Modifier.size(24.dp), tint: Color.red.colorImpl())
+                                    }
                                 }
                             }
                         }
@@ -640,21 +710,28 @@ public final class List : View, Renderable {
                                 Self.RenderItemContent(item: editItemRenderable, context: context.content(), modifier: editContentModifier)
                             }
                             // Transparent overlay intercepts taps for selection, taking priority over the
-                            // inner content's clickable (later in Box stacking = wins in Compose hit-test)
-                            if let listSelection {
+                            // inner content's clickable (later in Box stacking = wins in Compose hit-test).
+                            // Only active during edit mode (not during exit animation).
+                            if wantsEditChrome, let listSelection {
                                 Box(modifier: Modifier.matchParentSize().clickable(onClick: doToggle)) {}
                             }
                         }
                         // Trailing drag handle
-                        if hasTrailingHandle {
-                            Box(modifier: Modifier.size(44.dp).detectReorderAfterLongPress(reorderableState, key: key), contentAlignment: androidx.compose.ui.Alignment.Center) {
-                                Icon(imageVector: Icons.Filled.DragHandle, contentDescription: "Reorder", modifier: Modifier.size(24.dp), tint: Color.secondary.colorImpl())
+                        if showTrailingHandle {
+                            AnimatedVisibility(
+                                visibleState: editTrailingTransState,
+                                enter: animateTrailingEnter ? expandHorizontally(animationSpec: tween(durationMillis: editAnimDuration), expandFrom: androidx.compose.ui.Alignment.End) + fadeIn(animationSpec: tween(durationMillis: editAnimDuration)) : EnterTransition.None,
+                                exit: animateTrailingExit ? shrinkHorizontally(animationSpec: tween(durationMillis: editAnimDuration), shrinkTowards: androidx.compose.ui.Alignment.End) + fadeOut(animationSpec: tween(durationMillis: editAnimDuration)) : ExitTransition.None
+                            ) {
+                                Box(modifier: Modifier.size(44.dp).detectReorderAfterLongPress(reorderableState, key: key), contentAlignment: androidx.compose.ui.Alignment.Center) {
+                                    Icon(imageVector: Icons.Filled.DragHandle, contentDescription: "Reorder", modifier: Modifier.size(24.dp), tint: Color.secondary.colorImpl())
+                                }
                             }
                         }
                     }
                     // Edit-mode separator with control-aligned indent
                     if editListItemModifier?.separator != Visibility.hidden {
-                        let separatorStart = hasLeadingControl ? 44.0 : (Self.horizontalItemInset + Double(level) * Self.levelInset)
+                        let separatorStart = showLeadingControl ? 44.0 : (Self.horizontalItemInset + Double(level) * Self.levelInset)
                         androidx.compose.material3.Divider(modifier: Modifier.padding(start: separatorStart.dp).fillMaxWidth(), color: Color.separator.colorImpl())
                     }
                 }

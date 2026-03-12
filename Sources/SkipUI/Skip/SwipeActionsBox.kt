@@ -512,6 +512,16 @@ fun SwipeActionsBox(
                                 // Update state for composable body's isInCompletionZone
                                 completionThreshold = completionPx
 
+                                // Non-destructive full-swipe gets iOS pow(0.7) resistance
+                                // instead of edge-pinning. Destructive full-swipe still uses
+                                // edge-pinning (unrestricted drag to row edge).
+                                val allowsFullSwipeForDrag = if (dragSign < 0f) {
+                                    if (isLtr) allowsFullSwipeTrailing else allowsFullSwipeLeading
+                                } else {
+                                    if (isLtr) allowsFullSwipeLeading else allowsFullSwipeTrailing
+                                }
+                                val isNonDestructiveFullSwipe = allowsFullSwipeForDrag && !firstIsDestructive
+
                                 val touchDownX = down.position.x
                                 val slopDistance = slopPx
 
@@ -581,7 +591,7 @@ fun SwipeActionsBox(
                                     // Once pinned, stays pinned for this gesture (no slop
                                     // reintroduction). The expanded rawOffset clamp allows
                                     // dragging all the way back to fully close.
-                                    if (!edgePinned && isFingerInZoneC(rawOffset)) {
+                                    if (!isNonDestructiveFullSwipe && !edgePinned && isFingerInZoneC(rawOffset)) {
                                         edgePinned = true
                                         catchUpJob?.cancel()
                                         val target = dragSign * fingerToEdgeDist
@@ -601,10 +611,14 @@ fun SwipeActionsBox(
                                         }
                                     }
 
-                                    // Visual offset = rawOffset + signedAdjustment
-                                    // Clamp to valid direction: trailing never positive,
-                                    // leading never negative.
-                                    dragOffsetX = if (dragSign < 0f) {
+                                    // Non-destructive resistance from _UISwipeHandler._swipeRecognizerChanged: (UIKitCore 22G86 disassembly):
+                                    //   pow(excess, 0.7) beyond confirmationThreshold (float_value_0_7 at [x8, #0xd8])
+                                    //   destructive full-swipe uses anchor path instead (no resistance)
+                                    dragOffsetX = if (isNonDestructiveFullSwipe && abs(rawOffset) > completionPx) {
+                                        val excess = abs(rawOffset) - completionPx
+                                        val resistedExcess = Math.pow(excess.toDouble(), 0.7).toFloat()
+                                        dragSign * (completionPx + resistedExcess)
+                                    } else if (dragSign < 0f) {
                                         (rawOffset + signedAdjustment).coerceIn(-rowWidthPx.toFloat(), 0f)
                                     } else {
                                         (rawOffset + signedAdjustment).coerceIn(0f, rowWidthPx.toFloat())
@@ -873,6 +887,10 @@ private fun BoxScope.ActionsBackground(
                         }
                     }
 
+                    // Layout type from UISwipeActionButton._defaultLayoutForHeight: (UIKitCore disassembly):
+                    //   0 (>= 90pt): icon + label (__isRenderingText returns true)
+                    //   1 (>= 50pt): icon only
+                    //   2 (< 50pt):  compact icon (0.8× scale)
                     val layoutMode = when {
                         maxHeight >= 90.dp -> 0
                         maxHeight >= 50.dp -> 1
@@ -881,7 +899,7 @@ private fun BoxScope.ActionsBackground(
                     val showLabel = layoutMode == 0
                     val iconScale = if (layoutMode == 2) 0.8f else 1.0f
 
-                    // Content positioned via style-dependent bias; layoutMode uses maxHeight.
+                    // Content positioned via style-dependent bias.
                     Box(
                         modifier = Modifier.matchParentSize(),
                         contentAlignment = BiasAlignment(horizontalBias = contentBias, verticalBias = 0f)

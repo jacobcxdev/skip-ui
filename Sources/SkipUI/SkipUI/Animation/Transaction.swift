@@ -95,6 +95,59 @@ public protocol TransactionKey {
     static var defaultValue: Self.Value { get }
 }
 
+#else
+
+@frozen public struct Transaction {
+    @inlinable public init() {
+    }
+
+    public init(animation: Animation?) {
+        self.animation = animation
+    }
+
+    public var animation: Animation?
+
+}
+
+extension Transaction {
+    @available(*, unavailable)
+    public var isContinuous: Bool {
+        get { fatalError() }
+        set { fatalError() }
+    }
+}
+
+extension Transaction {
+    @available(*, unavailable)
+    public var disablesAnimations: Bool {
+        get { fatalError() }
+        set { fatalError() }
+    }
+}
+
+extension Transaction {
+    @available(*, unavailable)
+    public mutating func addAnimationCompletion(criteria: AnimationCompletionCriteria = .logicallyComplete, _ completion: @escaping () -> Void) {
+        fatalError()
+    }
+}
+
+extension Transaction {
+    @available(*, unavailable)
+    public var tracksVelocity: Bool {
+        get { fatalError() }
+        set { fatalError() }
+    }
+}
+
+public func withTransaction<Result>(_ transaction: Transaction, _ body: () throws -> Result) rethrows -> Result {
+    if let animation = transaction.animation {
+        return try withAnimation(animation, body)
+    } else {
+        return try body()
+    }
+}
+
 #endif
 
 /*
