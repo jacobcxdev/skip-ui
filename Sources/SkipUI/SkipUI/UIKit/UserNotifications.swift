@@ -669,9 +669,12 @@ public final class UNCalendarNotificationTrigger: UNNotificationTrigger {
 
     // SKIP @bridge
     public func nextTriggerDate() -> Date? {
+        #if SKIP
+        return nil // calendar.nextDate(after:matching:) not yet available in Skip
+        #else
         let calendar = Calendar.current
         let now = Date()
-        
+
         guard let nextDate = calendar.nextDate(
             after: now,
             matching: self.dateComponents as! DateComponents,
@@ -681,12 +684,13 @@ public final class UNCalendarNotificationTrigger: UNNotificationTrigger {
         ) else {
             return nil
         }
-        
+
         if !self.repeats && nextDate <= now {
             return nil
         }
-        
+
         return nextDate
+        #endif
     }
 }
 
