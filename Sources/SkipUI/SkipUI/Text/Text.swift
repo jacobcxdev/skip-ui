@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -115,7 +116,7 @@ public struct Text: View, Renderable, Equatable {
         if let environmentFont = EnvironmentValues.shared.font {
             font = environmentFont
         } else if let sectionHeaderStyle = EnvironmentValues.shared._listSectionHeaderStyle {
-            font = Font.callout
+            font = Font.footnote
             if sectionHeaderStyle == .plain {
                 font = font.bold()
             } else {
@@ -157,7 +158,9 @@ public struct Text: View, Renderable, Equatable {
         var style = font.fontImpl()
         // Trim the line height padding to mirror SwiftUI.Text layout. For now we only do this here on the Text component
         // rather than in Font to de-risk this aberration from Compose default text style behavior
-        style = style.copy(lineHeightStyle: LineHeightStyle(alignment: LineHeightStyle.Alignment.Center, trim: LineHeightStyle.Trim.Both))
+        style = style.copy(
+            lineHeightStyle: LineHeightStyle(alignment: LineHeightStyle.Alignment.Center, trim: LineHeightStyle.Trim.Both),
+            platformStyle: PlatformTextStyle(includeFontPadding: false))
         if let textBrush {
             style = style.copy(brush: textBrush)
         }

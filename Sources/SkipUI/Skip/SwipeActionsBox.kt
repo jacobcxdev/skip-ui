@@ -65,7 +65,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.drop
@@ -109,6 +111,33 @@ private sealed class SettleAction {
 
 private const val ACTION_BUTTON_WIDTH_DP = 74
 private const val MAX_BUTTON_WIDTH_DP = 120
+
+// Swipe action button styling — verified against iOS UISwipeActionStandardButton via LLDB.
+// All visual parameters are declared here; rendering code references this object.
+private object SwipeActionButtonStyle {
+    // iOS UX policy thresholds (from UISwipeActionPullView, build 23D8133).
+    // Design thresholds, not minimum-fit calculations — iOS deliberately
+    // suppresses labels even when they'd physically fit, to keep buttons compact.
+    const val iconLabelThresholdPt = 90f   // row height for icon + label mode
+    const val iconOnlyThresholdPt = 50f    // row height for icon-only mode
+
+    // Icon: SF Symbol frame in sp-equivalent units. Scaled to dp at the callsite
+    // via LocalDensity so the frame grows with DynamicType / fontScale.
+    const val iconFrameSizeSp = 22f
+    val iconFont: Font = Font.subheadline
+
+    // Label: iOS uses 15pt .SFUI-Medium (≈ subheadline + Medium weight).
+    // Verified via LLDB: UIButtonLabel font-size 15pt, font-family .SFUI-Medium.
+    val labelFont: Font = Font.subheadline
+    val labelFontWeight: FontWeight = FontWeight.Medium
+
+    // Layout: icon-label gap and vertical insets.
+    val iconLabelSpacing = 4.dp            // gap between icon frame and label
+    val verticalPadding = 4.dp             // 8pt total (iOS layoutSubviews: boundsH - 8.0 centered)
+
+    // Compact mode: scale factor for icons when row is too short for full-size.
+    const val compactIconScale = 0.8f
+}
 private const val MAX_DETENT_RATIO = 0.50f
 private const val FLING_VELOCITY_THRESHOLD = 1000f
 
@@ -887,17 +916,20 @@ private fun BoxScope.ActionsBackground(
                         }
                     }
 
-                    // Layout type from UISwipeActionButton._defaultLayoutForHeight: (UIKitCore disassembly):
-                    //   0 (>= 90pt): icon + label (__isRenderingText returns true)
-                    //   1 (>= 50pt): icon only
-                    //   2 (< 50pt):  compact icon (0.8× scale)
+                    // iOS UX policy thresholds, adjusted for font rendering deviation.
+                    // In native mode, Android body text may render at a slightly different
+                    // height than iOS's baseline — shift thresholds by that delta so the same
+                    // semantic row content triggers the same layout mode on both platforms.
+                    val fontDeviation = Font.renderedHeight(Font.TextStyle.body) - Font.iosBaselineRenderedHeight(Font.TextStyle.body)
+                    val iconLabelThreshold = (SwipeActionButtonStyle.iconLabelThresholdPt + fontDeviation).dp
+                    val iconOnlyThreshold = (SwipeActionButtonStyle.iconOnlyThresholdPt + fontDeviation).dp
                     val layoutMode = when {
-                        maxHeight >= 90.dp -> 0
-                        maxHeight >= 50.dp -> 1
-                        else -> 2
+                        maxHeight >= iconLabelThreshold -> 0  // icon + label
+                        maxHeight >= iconOnlyThreshold -> 1   // icon only
+                        else -> 2                              // compact (0.8× icon)
                     }
                     val showLabel = layoutMode == 0
-                    val iconScale = if (layoutMode == 2) 0.8f else 1.0f
+                    val iconScale = if (layoutMode == 2) SwipeActionButtonStyle.compactIconScale else 1.0f
 
                     // Content positioned via style-dependent bias.
                     Box(
@@ -906,14 +938,12 @@ private fun BoxScope.ActionsBackground(
                     ) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            // iOS dynamic button: 4pt explicit gap between icon button frame and title label
-                            verticalArrangement = if (showLabel) Arrangement.spacedBy(4.dp, Alignment.CenterVertically) else Arrangement.Center,
+                            verticalArrangement = if (showLabel) Arrangement.spacedBy(SwipeActionButtonStyle.iconLabelSpacing, Alignment.CenterVertically) else Arrangement.Center,
                             modifier = Modifier
                                 .requiredWidth(ACTION_BUTTON_WIDTH_DP.dp)
                                 .fillMaxHeight()
                                 .offset(x = innerEdgeOffset)
-                                // iOS layoutSubviews: 8pt total vertical margin (boundsH - 8.0 centered)
-                                .padding(vertical = 4.dp)
+                                .padding(vertical = SwipeActionButtonStyle.verticalPadding)
                                 .scale(labelScale)
                                 .padding(horizontal = labelEdgePadding.dp)
                         ) {
@@ -922,10 +952,11 @@ private fun BoxScope.ActionsBackground(
                             // environment value so Image's RenderSystem picks it up automatically.
                             if (action.iconView != null) {
                                 val white = skip.ui.Color(colorImpl = { Color.White.copy(alpha = labelAlpha) })
-                                Box(modifier = Modifier.requiredSize(22.dp).scale(iconScale)) {
+                                val iconFrameDp = with(LocalDensity.current) { SwipeActionButtonStyle.iconFrameSizeSp.sp.toDp() }
+                                Box(modifier = Modifier.requiredSize(iconFrameDp).scale(iconScale)) {
                                     EnvironmentValues.shared.setValues({ env ->
                                         env.set_foregroundStyle(white)
-                                        env.setfont(Font.system(size = 15.0))
+                                        env.setfont(SwipeActionButtonStyle.iconFont)
                                         env.set_symbolVariants(SymbolVariants.fill)
                                         ComposeResult.ok
                                     }) {
@@ -934,13 +965,11 @@ private fun BoxScope.ActionsBackground(
                                 }
                             }
                             if (showLabel && action.label != null) {
+                                val labelStyle = SwipeActionButtonStyle.labelFont.asComposeTextStyle()
                                 Text(
                                     text = action.label,
                                     color = Color.White.copy(alpha = labelAlpha),
-                                    // iOS dynamic button: footnote font (≈13sp), UIFontWeightMedium,
-                                    // capped at UICTContentSizeCategoryXL
-                                    fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp),
-                                    fontWeight = FontWeight.Medium,
+                                    style = labelStyle.copy(fontWeight = SwipeActionButtonStyle.labelFontWeight),
                                     maxLines = 1
                                 )
                             }

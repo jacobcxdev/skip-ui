@@ -322,6 +322,8 @@ extension EnvironmentValues {
             return EnvironmentSupport(builtinValue: truncationMode?.rawValue)
         case "verticalSizeClass":
             return EnvironmentSupport(builtinValue: verticalSizeClass?.rawValue)
+        case "dynamicTypeMode":
+            return EnvironmentSupport(builtinValue: dynamicTypeMode.rawValue)
         case "editMode":
             return EnvironmentSupport(builtinValue: _editMode?.wrappedValue.isEditing == true)
         default:
@@ -388,6 +390,10 @@ extension EnvironmentValues {
             return true
         case "verticalSizeClass":
             return false
+        case "dynamicTypeMode":
+            let rawValue = value?.builtinValue as? Int ?? 0
+            setdynamicTypeMode(DynamicTypeMode(rawValue: rawValue) ?? .native)
+            return true
         case "editMode":
             let isEditing = value?.builtinValue as? Bool == true
             set_editMode(isEditing ? Binding.constant(EditMode.active) : Binding.constant(EditMode.inactive))
@@ -420,6 +426,11 @@ extension EnvironmentValues {
     public var dismiss: DismissAction {
         get { builtinValue(key: "dismiss", defaultValue: { DismissAction.default }) as! DismissAction }
         set { setBuiltinValue(key: "dismiss", value: newValue, defaultValue: { DismissAction.default }) }
+    }
+
+    public var dynamicTypeMode: DynamicTypeMode {
+        get { builtinValue(key: "dynamicTypeMode", defaultValue: { DynamicTypeMode.native }) as! DynamicTypeMode }
+        set { setBuiltinValue(key: "dynamicTypeMode", value: newValue, defaultValue: { DynamicTypeMode.native }) }
     }
 
     public var font: Font? {

@@ -419,19 +419,22 @@ public final class List : View, Renderable {
         } // closes CompositionLocalProvider(LocalPeerStore provides peerStore)
     }
 
-    private static let horizontalInset = 16.0
+    private static let horizontalInset = 20.0
     private static let verticalInset = 16.0
-    private static let minimumItemHeight = 32.0
-    private static let horizontalItemInset = 16.0
-    private static let verticalItemInset = 8.0
+    private static let minimumItemHeight = 22.0 // iOS LLDB: 44pt cell - 2×11pt padding = 22pt content minimum
+    private static let horizontalItemInset = 20.0
+    private static let verticalItemInset = 11.0
     private static let levelInset = 24.0
+    private static let editContentInset = 16.0 // iOS content margin within edit-mode rows (LLDB: text at x=16 within content view)
+    private static let sectionHeaderTopInset = 17.0 // iOS LLDB: text y=17pt within 38.67pt header cell
+    private static let sectionHeaderBottomInset = 6.0 // iOS LLDB: 38.67 - 17 - 15.67 = 6pt below text
 
     static func contentModifier(level: Int) -> Modifier {
         return Modifier.padding(start: (horizontalItemInset + level * levelInset).dp, end: horizontalItemInset.dp, top: verticalItemInset.dp, bottom: verticalItemInset.dp).fillMaxWidth().requiredHeightIn(min: minimumItemHeight.dp)
     }
 
     @Composable static func RenderSeparator(level: Int) {
-        androidx.compose.material3.Divider(modifier: Modifier.padding(start: (horizontalItemInset + level * levelInset).dp).fillMaxWidth(), color: Color.separator.colorImpl())
+        androidx.compose.material3.Divider(modifier: Modifier.padding(start: (horizontalItemInset + level * levelInset).dp).fillMaxWidth(), thickness: Dp.Hairline, color: Color.separator.colorImpl())
     }
 
     @Composable static func RenderItemContent(item: Renderable, context: ComposeContext, modifier: Modifier) {
@@ -626,7 +629,7 @@ public final class List : View, Renderable {
         // jump at the edit→normal rendering handoff.
         let normalStartPad = (Self.horizontalItemInset + Double(level) * Self.levelInset).dp
         let editLeadingPad = animateDpAsState(
-            targetValue: (wantsEditChrome && hasLeadingControl) ? 0.dp : normalStartPad,
+            targetValue: (wantsEditChrome && hasLeadingControl) ? Self.editContentInset.dp : normalStartPad,
             animationSpec: (wantsEditChrome ? animateLeadingEnter : animateLeadingExit) ? tween(durationMillis: editAnimDuration) : snap()
         )
         let editTrailingPad = animateDpAsState(
@@ -677,6 +680,15 @@ public final class List : View, Renderable {
                     columnModifier = columnModifier.background(Color.accentColor.colorImpl().copy(alpha: Float(0.15)))
                 }
                 Column(modifier: columnModifier) {
+                    // Edit control sizes: iOS design constants, scaled by fontScale for DynamicType.
+                    // Circle=26pt, box=44pt touch target, reorder=24pt from iOS LLDB measurements.
+                    let fontScale = LocalDensity.current.fontScale
+                    let editCircleSizeUncapped = Float(26.0) * fontScale
+                    let editCircleSize = min(editCircleSizeUncapped, Float(44.0))
+                    let editBoxSize = max(editCircleSizeUncapped, Float(44.0))
+                    let editCircleOffset = (editBoxSize - editCircleSize) / Float(2.0)
+                    let editReorderSize = Float(24.0) * fontScale
+                    let editReorderBoxSize = max(editReorderSize, Float(44.0))
                     Row(modifier: Modifier.fillMaxWidth(), verticalAlignment: androidx.compose.ui.Alignment.CenterVertically) {
                         // Leading control: selection circle or delete circle
                         if showLeadingControl {
@@ -687,16 +699,16 @@ public final class List : View, Renderable {
                             ) {
                                 if wasShowingSelectionCircle.value {
                                     let selected = selectedState.value
-                                    Box(modifier: Modifier.size(44.dp).clickable(enabled: wantsEditChrome, onClick: doToggle), contentAlignment: androidx.compose.ui.Alignment.Center) {
+                                    Box(modifier: Modifier.size(editBoxSize.dp).clickable(enabled: wantsEditChrome, onClick: doToggle), contentAlignment: androidx.compose.ui.Alignment.Center) {
                                         if selected {
-                                            Icon(imageVector: Icons.Filled.CheckCircle, contentDescription: "Selected", modifier: Modifier.size(24.dp), tint: Color.accentColor.colorImpl())
+                                            Icon(imageVector: Icons.Filled.CheckCircle, contentDescription: "Selected", modifier: Modifier.offset(x: editCircleOffset.dp).size(editCircleSize.dp), tint: Color.accentColor.colorImpl())
                                         } else {
-                                            Icon(imageVector: Icons.Outlined.Circle, contentDescription: "Unselected", modifier: Modifier.size(24.dp), tint: Color.secondary.colorImpl())
+                                            Icon(imageVector: Icons.Outlined.Circle, contentDescription: "Unselected", modifier: Modifier.offset(x: editCircleOffset.dp).size(editCircleSize.dp), tint: Color.secondary.colorImpl())
                                         }
                                     }
                                 } else if isDeleteEnabled {
-                                    Box(modifier: Modifier.size(44.dp).clickable(enabled: wantsEditChrome, onClick: { rememberedDeleteAction.value() }), contentAlignment: androidx.compose.ui.Alignment.Center) {
-                                        Icon(imageVector: Icons.Filled.RemoveCircle, contentDescription: "Delete", modifier: Modifier.size(24.dp), tint: Color.red.colorImpl())
+                                    Box(modifier: Modifier.size(editBoxSize.dp).clickable(enabled: wantsEditChrome, onClick: { rememberedDeleteAction.value() }), contentAlignment: androidx.compose.ui.Alignment.Center) {
+                                        Icon(imageVector: Icons.Filled.RemoveCircle, contentDescription: "Delete", modifier: Modifier.offset(x: editCircleOffset.dp).size(editCircleSize.dp), tint: Color.red.colorImpl())
                                     }
                                 }
                             }
@@ -723,16 +735,16 @@ public final class List : View, Renderable {
                                 enter: animateTrailingEnter ? expandHorizontally(animationSpec: tween(durationMillis: editAnimDuration), expandFrom: androidx.compose.ui.Alignment.End) + fadeIn(animationSpec: tween(durationMillis: editAnimDuration)) : EnterTransition.None,
                                 exit: animateTrailingExit ? shrinkHorizontally(animationSpec: tween(durationMillis: editAnimDuration), shrinkTowards: androidx.compose.ui.Alignment.End) + fadeOut(animationSpec: tween(durationMillis: editAnimDuration)) : ExitTransition.None
                             ) {
-                                Box(modifier: Modifier.size(44.dp).detectReorderAfterLongPress(reorderableState, key: key), contentAlignment: androidx.compose.ui.Alignment.Center) {
-                                    Icon(imageVector: Icons.Filled.DragHandle, contentDescription: "Reorder", modifier: Modifier.size(24.dp), tint: Color.secondary.colorImpl())
+                                Box(modifier: Modifier.padding(end: 8.dp).size(editReorderBoxSize.dp).detectReorderAfterLongPress(reorderableState, key: key), contentAlignment: androidx.compose.ui.Alignment.Center) {
+                                    Icon(imageVector: Icons.Filled.DragHandle, contentDescription: "Reorder", modifier: Modifier.size(editReorderSize.dp), tint: Color.secondary.colorImpl())
                                 }
                             }
                         }
                     }
                     // Edit-mode separator with control-aligned indent
                     if editListItemModifier?.separator != Visibility.hidden {
-                        let separatorStart = showLeadingControl ? 44.0 : (Self.horizontalItemInset + Double(level) * Self.levelInset)
-                        androidx.compose.material3.Divider(modifier: Modifier.padding(start: separatorStart.dp).fillMaxWidth(), color: Color.separator.colorImpl())
+                        let separatorStart = showLeadingControl ? (Double(editBoxSize) + Self.editContentInset) : (Self.horizontalItemInset + Double(level) * Self.levelInset)
+                        androidx.compose.material3.Divider(modifier: Modifier.padding(start: separatorStart.dp).fillMaxWidth(), thickness: Dp.Hairline, color: Color.separator.colorImpl())
                     }
                 }
             }
@@ -791,8 +803,8 @@ public final class List : View, Renderable {
             .background(backgroundColor)
             .then(context.modifier)
         var contentModifier = Modifier.fillMaxWidth()
-        if isTop && styling.style != .plain {
-            contentModifier = contentModifier.padding(start: Self.horizontalItemInset.dp, top: 0.dp, end: Self.horizontalItemInset.dp, bottom: Self.verticalItemInset.dp)
+        if styling.style != .plain {
+            contentModifier = contentModifier.padding(start: Self.horizontalItemInset.dp, top: isTop ? 0.dp : Self.sectionHeaderTopInset.dp, end: Self.horizontalItemInset.dp, bottom: Self.sectionHeaderBottomInset.dp)
         } else {
             contentModifier = contentModifier.padding(horizontal: Self.horizontalItemInset.dp, vertical: Self.verticalItemInset.dp)
         }

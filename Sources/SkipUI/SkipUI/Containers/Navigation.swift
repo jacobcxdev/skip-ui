@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -77,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
@@ -1342,7 +1344,7 @@ public struct NavigationLink : View, Renderable {
     @Composable override func RenderListItem(context: ComposeContext, modifiers: kotlin.collections.List<ModifierProtocol>) {
         ModifiedContent.RenderWithModifiers(modifiers, context: context) { context in
             let renderables = label.Evaluate(context: context, options: 0)
-            Row(modifier: context.modifier, horizontalArrangement: Arrangement.spacedBy(8.dp), verticalAlignment: androidx.compose.ui.Alignment.CenterVertically) {
+            Row(modifier: context.modifier, verticalAlignment: androidx.compose.ui.Alignment.CenterVertically) {
                 Box(modifier: Modifier.weight(Float(1.0))) {
                     let labelContext = context.content()
                     // Continue to specialize for list rendering within the content (e.g. Label)
@@ -1359,9 +1361,19 @@ public struct NavigationLink : View, Renderable {
         }
     }
 
+    // iOS disclosure indicator: SF Symbol `chevron.right`, 7×12pt at default DT.
+    // KeyboardArrowRight glyph spans x=8.59→16 in a 24×24 viewbox, leaving 8/24
+    // empty canvas on the trailing side. Offset compensates so the visible glyph aligns
+    // with the row's trailing padding edge, matching iOS's 20.667pt trailing inset.
+    // Sized in sp for DynamicType scaling.
     @Composable static func RenderChevron() {
         let isRTL = EnvironmentValues.shared.layoutDirection == .rightToLeft
-        Icon(imageVector: isRTL ? Icons.Outlined.KeyboardArrowLeft : Icons.Outlined.KeyboardArrowRight, contentDescription: nil, tint: MaterialTheme.colorScheme.outlineVariant)
+        let density = LocalDensity.current
+        let chevronSizeDp = with(density) { Float(22).sp.toDp() }
+        // Compensate for Material icon internal canvas padding (8/24 of icon size on trailing side)
+        let glyphInset = chevronSizeDp * Float(8.0 / 24.0)
+        let offsetX = isRTL ? -glyphInset : glyphInset
+        Icon(imageVector: isRTL ? Icons.Outlined.KeyboardArrowLeft : Icons.Outlined.KeyboardArrowRight, contentDescription: nil, tint: MaterialTheme.colorScheme.outlineVariant, modifier: Modifier.size(chevronSizeDp).offset(x: offsetX))
     }
 
     @Composable internal func navigationAction() -> () -> Void {
