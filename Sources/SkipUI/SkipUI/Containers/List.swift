@@ -274,9 +274,14 @@ public final class List : View, Renderable {
         let isSearching = EnvironmentValues.shared._searchableState?.isSearching.value == true
         let animatePlacement = !suppressPlacement.value && !isSearching
         let animateFadeOut = !isDestructiveDeleteAnimating.value && !isSearching
+        // Combine contentPadding with contentMargins additively
+        var contentPadding = EnvironmentValues.shared._contentPadding.asPaddingValues()
+        if let contentMargins = EnvironmentValues.shared._contentMargins?.asComposePaddingValues(for: .automatic) {
+            contentPadding = contentPadding.adding(contentMargins)
+        }
         // SKIP INSERT: val providedPeerStore = LocalPeerStore provides peerStore
         CompositionLocalProvider(providedPeerStore) {
-        LazyColumn(state: reorderableState.listState, modifier: modifier) {
+        LazyColumn(state: reorderableState.listState, modifier: modifier, contentPadding: contentPadding) {
             // Read move trigger here so that a move will recompose list content
             let _ = moveTrigger.value
             // Initialize the factory context with closures that use the LazyListScope to generate items
@@ -937,7 +942,7 @@ public final class List : View, Renderable {
         } else if styling.style == ListStyle.plain {
             return Color.background.colorImpl()
         } else {
-            return Color.systemBackground.colorImpl()
+            return Color.systemBarBackground.colorImpl()
         }
     }
     #else

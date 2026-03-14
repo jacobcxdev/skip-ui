@@ -113,7 +113,16 @@ public struct ScrollView : View, Renderable {
                 containerModifier = containerModifier.scrollDismissesKeyboardMode(EnvironmentValues.shared.scrollDismissesKeyboardMode)
 
                 Box(modifier: containerModifier) {
-                    Column(modifier: scrollModifier) {
+                    // Apply content margins as padding to the scrolling content only when this ScrollView is managing scroll
+                    // (when a lazy container is the child, it manages its own scroll and will apply margins itself)
+                    let finalScrollModifier: Modifier
+                    if (wantsVerticalScroll || wantsHorizontalScroll), let contentMargins = EnvironmentValues.shared._contentMargins?.asComposePaddingValues(for: .automatic) {
+                        finalScrollModifier = scrollModifier.padding(contentMargins)
+                    } else {
+                        finalScrollModifier = scrollModifier
+                    }
+
+                    Column(modifier: finalScrollModifier) {
                         if wantsVerticalScroll {
                             let searchableState = EnvironmentValues.shared._searchableState
                             let isSearchable = searchableState?.isOnNavigationStack == false
@@ -240,7 +249,25 @@ struct BuiltinScrollAxisSetPreferenceKey: PreferenceKey {
         value.formUnion(nextValue())
     }
 }
+
+/// Holds the current scroll position ID for visible items in a scroll view.
+struct ScrollPositionState {
+    let id: AnyHashable?
+}
+
+struct ScrollPositionPreferenceKey: PreferenceKey {
+    static let defaultValue = ScrollPositionState(id: nil)
+
+    static func reduce(value: inout ScrollPositionState, nextValue: () -> ScrollPositionState) {
+        value = nextValue()
+    }
+}
 #endif
+
+public struct ScrollPosition {
+    @available(*, unavailable)
+    public init() {}
+}
 
 public enum ScrollBounceBehavior {
     case automatic
@@ -292,19 +319,48 @@ public struct PinnedScrollableViews : OptionSet {
 }
 
 extension View {
-    @available(*, unavailable)
     public func contentMargins(_ edges: Edge.Set = .all, _ insets: EdgeInsets, for placement: ContentMarginPlacement = .automatic) -> some View {
+        #if SKIP
+        // Skip does not display scroll indicators, so .scrollIndicators placement is a no-op
+        let margins: ContentMargins
+        switch placement {
+        case .automatic:
+            margins = ContentMargins(automatic: insets)
+        case .scrollContent:
+            margins = ContentMargins(scrollContent: insets)
+        case .scrollIndicators:
+            // No-op: SkipUI doesn't have visible scroll indicators on Android
+            return self
+        }
+        return environment(\._contentMargins, margins, affectsEvaluate: false)
+        #else
         return self
+        #endif
     }
 
-    @available(*, unavailable)
     public func contentMargins(_ edges: Edge.Set = .all, _ length: CGFloat?, for placement: ContentMarginPlacement = .automatic) -> some View {
+        #if SKIP
+        guard let length else {
+            return self
+        }
+        let insets = EdgeInsets(top: edges.contains(.top) ? length : 0.0,
+                                leading: edges.contains(.leading) ? length : 0.0,
+                                bottom: edges.contains(.bottom) ? length : 0.0,
+                                trailing: edges.contains(.trailing) ? length : 0.0)
+        return contentMargins(edges, insets, for: placement)
+        #else
         return self
+        #endif
     }
 
-    @available(*, unavailable)
-    public func contentMargins(_ length: CGFloat, for placement: ContentMarginPlacement = .automatic) -> some View {
-        return self
+    public func contentMargins(length: CGFloat, for placement: ContentMarginPlacement = .automatic) -> some View {
+        return contentMargins(.all, length, for: placement)
+    }
+
+    // SKIP @bridge
+    public func contentMargins(_ edges: Int, top: CGFloat, leading: CGFloat, bottom: CGFloat, trailing: CGFloat, for placement: Int) -> any View {
+        let placementValue = ContentMarginPlacement(rawValue: placement) ?? .automatic
+        return contentMargins(Edge.Set(rawValue: edges), EdgeInsets(top: top, leading: leading, bottom: bottom, trailing: trailing), for: placementValue)
     }
 
     @available(*, unavailable)
@@ -391,14 +447,28 @@ extension View {
         return self
     }
 
-    @available(*, unavailable)
-    public func scrollPosition(id: Binding<(any Hashable)?>) -> some View {
+    public func scrollPosition(id: Binding<(some Hashable)?>, anchor: UnitPoint? = nil) -> some View {
+        #if SKIP
+        guard anchor == nil else {
+            fatalError("scrollPosition(id:anchor:) is only supported on Android with nil anchor")
+        }
+        return onPreferenceChange(ScrollPositionPreferenceKey.self) { newValue in
+            id.wrappedValue = newValue.id
+        }
+        #else
         return self
+        #endif
     }
 
-    @available(*, unavailable)
-    public func scrollPosition(initialAnchor: UnitPoint?) -> some View {
+    // SKIP @bridge
+    public func scrollPosition(getId: @escaping () -> AnyHashable?, setId: @escaping (AnyHashable?) -> Void) -> any View {
+        #if SKIP
+        return onPreferenceChange(ScrollPositionPreferenceKey.self) { newValue in
+            setId(newValue.id)
+        }
+        #else
         return self
+        #endif
     }
 
     @available(*, unavailable)
